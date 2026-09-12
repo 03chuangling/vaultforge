@@ -409,7 +409,7 @@ fun ItemDetailScreen(
                 Spacer(Modifier.height(16.dp))
                 SectionTitle("说明")
                 Text(
-                    "检测时会向保存的调用地址发起 GET 请求，结果显示「可用 / 不可用」。具体地址与演示代码在右上角设置中查看修改。",
+                    "检测时会优先执行「官方演示代码」：自动提取代码中的真实请求（支持 curl / Python / JS 片段）并实际调用，用真实响应（200 可用 / 401 密钥问题等）判断；未填或无法解析时回退为地址连通性探测。地址与演示代码在右上角设置中查看修改。",
                     color = Text3,
                     fontSize = 12.sp,
                 )

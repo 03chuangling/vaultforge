@@ -211,11 +211,17 @@ fun AddItemScreen(onBack: () -> Unit, onSaved: () -> Unit) {
                 OutlinedTextField(
                     value = demoCode,
                     onValueChange = { demoCode = it },
-                    label = { Text("官方演示代码（存档展示）") },
+                    label = { Text("官方演示代码（检测时执行）") },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(140.dp),
                     maxLines = 8,
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "支持 curl / Python / JS 示例片段：检测时会提取其中真实请求并实际调用，验证 API 是否可用",
+                    fontSize = 11.sp,
+                    color = Text3,
                 )
             }
         }

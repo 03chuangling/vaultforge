@@ -10,9 +10,27 @@ import java.net.URL
 object ApiProbe {
 
     suspend fun probe(item: VaultItem): ProbeResult = withContext(Dispatchers.IO) {
+        // 优先执行「官方演示代码」：提取里面的真实请求实际调用，用真实响应判断 API 能否正常使用
+        if (item.demoCode.isNotBlank()) {
+            val demo = DemoExecutor.execute(item)
+            if (demo.extracted) {
+                return@withContext ProbeResult(
+                    ok = demo.ok,
+                    latencyMs = if (demo.tcpMs >= 0L) demo.tcpMs else demo.totalMs,
+                    message = demo.message,
+                )
+            }
+            // 演示代码无法解析：回退为地址连通性探测，并在结果中说明
+            val fallback = probeEndpoint(item)
+            return@withContext fallback.copy(message = "（演示代码未能解析，已按地址连通性探测）" + fallback.message)
+        }
+        probeEndpoint(item)
+    }
+
+    private fun probeEndpoint(item: VaultItem): ProbeResult {
         val endpoint = item.endpoint.trim()
         if (endpoint.isEmpty()) {
-            return@withContext ProbeResult(false, -1L, "未填写调用地址")
+            return ProbeResult(false, -1L, "未填写调用地址")
         }
         // 先测 TCP 级握手延迟（更接近真实网络延迟，而非含 TLS/请求的完整耗时）
         val tcpMs = try {
@@ -28,7 +46,7 @@ object ApiProbe {
         }
         val t0 = System.currentTimeMillis()
         var conn: HttpURLConnection? = null
-        try {
+        return try {
             conn = URL(endpoint).openConnection() as HttpURLConnection
             conn.connectTimeout = 10000
             conn.readTimeout = 10000
