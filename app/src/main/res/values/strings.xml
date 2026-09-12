@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">秘钥仓</string>
+    <string name="server_channel_name">秘钥仓服务</string>
+    <string name="server_notification_title">秘钥仓服务运行中</string>
+    <string name="server_notification_text">本地接口 127.0.0.1:%1$d</string>
+</resources>

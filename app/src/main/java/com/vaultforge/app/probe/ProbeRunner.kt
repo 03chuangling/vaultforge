@@ -1,0 +1,25 @@
+package com.vaultforge.app.probe
+
+import com.vaultforge.app.data.VaultStore
+import com.vaultforge.app.model.ProbeResult
+import com.vaultforge.app.model.VaultItem
+
+object ProbeRunner {
+
+    suspend fun probe(store: VaultStore, item: VaultItem): ProbeResult {
+        val result = when (item.type) {
+            "file" -> FileProbe.probe(item)
+            "ssh" -> SshClient.probe(item)
+            "api" -> ApiProbe.probe(item)
+            else -> ProbeResult(false, -1L, "未知类型：" + item.type)
+        }
+        store.updateStatus(item.id, result)
+        return result
+    }
+
+    suspend fun probeAll(store: VaultStore) {
+        store.items.value.forEach { item ->
+            runCatching { probe(store, item) }
+        }
+    }
+}
