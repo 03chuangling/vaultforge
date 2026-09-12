@@ -49,6 +49,7 @@ fun AddItemScreen(onBack: () -> Unit, onSaved: () -> Unit) {
     var secret by remember { mutableStateOf("") }
     var privateKey by remember { mutableStateOf("") }
     var endpoint by remember { mutableStateOf("") }
+    var apiKey by remember { mutableStateOf("") }
     var demoCode by remember { mutableStateOf("") }
     var tagsText by remember { mutableStateOf("") }
 
@@ -83,6 +84,7 @@ fun AddItemScreen(onBack: () -> Unit, onSaved: () -> Unit) {
                 name = name.ifBlank { "API密钥" },
                 tags = tags,
                 endpoint = endpoint.trim(),
+                apiKey = apiKey.trim(),
                 demoCode = demoCode,
             )
         }
@@ -206,6 +208,14 @@ fun AddItemScreen(onBack: () -> Unit, onSaved: () -> Unit) {
                     value = endpoint,
                     onValueChange = { endpoint = it },
                     label = { Text("API 调用地址（endpoint）") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = apiKey,
+                    onValueChange = { apiKey = it },
+                    label = { Text("API密钥（Token）") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                 )

@@ -17,6 +17,13 @@ object ProbeRunner {
         return result
     }
 
+    /** 轻量模式：只测 TCP 级延迟（列表页每 5 秒自动刷新用），并更新状态 */
+    suspend fun probeApiLatency(store: VaultStore, item: VaultItem): ProbeResult {
+        val result = ApiProbe.latency(item)
+        store.updateStatus(item.id, result)
+        return result
+    }
+
     suspend fun probeAll(store: VaultStore) {
         store.items.value.forEach { item ->
             runCatching { probe(store, item) }

@@ -37,9 +37,13 @@ import com.vaultforge.app.VaultApp
 import com.vaultforge.app.model.VaultItem
 import com.vaultforge.app.probe.ProbeRunner
 import com.vaultforge.app.server.VaultServer
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private var autoProbedOnce = false
+
+/** API 条目自动延迟刷新的间隔（毫秒） */
+private const val API_REFRESH_MS = 5_000L
 
 @Composable
 fun VaultListScreen(
@@ -63,6 +67,17 @@ fun VaultListScreen(
             probing = true
             runCatching { ProbeRunner.probeAll(store) }
             probing = false
+        }
+    }
+
+    // API 条目自动延迟刷新：进入后先轮流跑一遍，此后每 5 秒自动刷新一轮
+    LaunchedEffect(Unit) {
+        while (true) {
+            val apiItems = store.items.value.filter { it.type == "api" && it.endpoint.isNotBlank() }
+            for (api in apiItems) {
+                runCatching { ProbeRunner.probeApiLatency(store, api) }
+            }
+            delay(API_REFRESH_MS)
         }
     }
 

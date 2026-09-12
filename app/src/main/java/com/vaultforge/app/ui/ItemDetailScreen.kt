@@ -96,6 +96,7 @@ fun ItemDetailScreen(
     var username by remember(itemId) { mutableStateOf(item.username) }
     var secretText by remember(itemId) { mutableStateOf(item.secret) }
     var endpoint by remember(itemId) { mutableStateOf(item.endpoint) }
+    var apiKeyText by remember(itemId) { mutableStateOf(item.apiKey) }
     var demoCode by remember(itemId) { mutableStateOf(item.demoCode) }
 
     var busy by remember(itemId) { mutableStateOf(false) }
@@ -127,6 +128,7 @@ fun ItemDetailScreen(
             username = username.trim(),
             secret = secretText,
             endpoint = endpoint.trim(),
+            apiKey = apiKeyText.trim(),
             demoCode = demoCode,
         )
         store.upsert(updated)
@@ -220,6 +222,8 @@ fun ItemDetailScreen(
                 }
                 else -> {
                     OutlinedTextField(value = endpoint, onValueChange = { endpoint = it }, label = { Text("API 调用地址") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedTextField(value = apiKeyText, onValueChange = { apiKeyText = it }, label = { Text("API密钥（Token）") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                     Spacer(Modifier.height(10.dp))
                     OutlinedTextField(value = demoCode, onValueChange = { demoCode = it }, label = { Text("官方演示代码") }, modifier = Modifier.fillMaxWidth().height(130.dp), maxLines = 7)
                 }

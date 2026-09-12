@@ -25,6 +25,7 @@ data class VaultItem(
 
     // 第三方 API
     val endpoint: String = "",
+    val apiKey: String = "",
     val demoCode: String = "",
 
     // 最近一次探测结果

@@ -247,6 +247,7 @@ object VaultServer {
             secret = str("secret", existing.secret),
             privateKey = str("privateKey", existing.privateKey),
             endpoint = str("endpoint", existing.endpoint),
+            apiKey = str("apiKey", existing.apiKey),
             demoCode = str("demoCode", existing.demoCode),
         )
         store.upsert(updated)

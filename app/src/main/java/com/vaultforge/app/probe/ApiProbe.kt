@@ -27,6 +27,25 @@ object ApiProbe {
         probeEndpoint(item)
     }
 
+    /** 轻量模式：只测 TCP 级握手延迟（列表页自动刷新用） */
+    suspend fun latency(item: VaultItem): ProbeResult = withContext(Dispatchers.IO) {
+        val endpoint = item.endpoint.trim()
+        if (endpoint.isEmpty()) return@withContext ProbeResult(false, -1L, "未填写调用地址")
+        val tcpMs = try {
+            val u = URL(endpoint)
+            val port = if (u.port > 0) u.port else if (u.protocol == "https") 443 else 80
+            val tc = System.currentTimeMillis()
+            java.net.Socket().use { s ->
+                s.connect(java.net.InetSocketAddress(u.host, port), 3000)
+            }
+            System.currentTimeMillis() - tc
+        } catch (e: Exception) {
+            -1L
+        }
+        if (tcpMs >= 0L) ProbeResult(true, tcpMs, "延迟 $tcpMs ms")
+        else ProbeResult(false, -1L, "连接失败")
+    }
+
     private fun probeEndpoint(item: VaultItem): ProbeResult {
         val endpoint = item.endpoint.trim()
         if (endpoint.isEmpty()) {
