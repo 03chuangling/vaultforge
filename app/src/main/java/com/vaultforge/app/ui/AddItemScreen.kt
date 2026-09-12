@@ -62,6 +62,8 @@ fun AddItemScreen(onBack: () -> Unit, onSaved: () -> Unit) {
                 tags = tags,
                 protocol = protocol.trim(),
                 address = address.trim(),
+                username = username.trim(),
+                secret = secret,
             )
             "ssh" -> VaultItem(
                 id = store.newId(),
