@@ -23,6 +23,7 @@ data class VaultSettings(
     val port: Int = 8737,
     val token: String = "",
     val chartStyle: String = "ring", // ring=环形样式 | plot=坐标图（折线）样式
+    val sampleSec: Int = 5, // 坐标图采样间隔（秒）
 )
 
 @Serializable

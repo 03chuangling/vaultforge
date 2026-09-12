@@ -26,9 +26,10 @@ object FileProbe {
     }
 
     private fun probeHttp(item: VaultItem, t0: Long): ProbeResult {
-        var code = httpCode(item, "HEAD", t0)
+        val tcpMs = tcpLatencyMs(item.address)
+        var code = httpCode(item, "HEAD")
         if (code in 400..599) {
-            code = httpCode(item, "GET", t0)
+            code = httpCode(item, "GET")
         }
         val ok = code in 200..399
         val note = when {
@@ -37,10 +38,21 @@ object FileProbe {
             ok -> "HTTP $code"
             else -> "HTTP $code（不可用）"
         }
-        return ProbeResult(ok, if (ok) System.currentTimeMillis() - t0 else -1L, note)
+        val lat = if (tcpMs >= 0L) tcpMs else System.currentTimeMillis() - t0
+        return ProbeResult(ok, if (ok) lat else -1L, note)
     }
 
-    private fun httpCode(item: VaultItem, method: String, t0: Long): Int {
+    private fun tcpLatencyMs(rawUrl: String): Long = try {
+        val u = URL(rawUrl)
+        val port = if (u.port > 0) u.port else if (u.protocol == "https") 443 else 80
+        val t = System.currentTimeMillis()
+        Socket().use { s -> s.connect(InetSocketAddress(u.host, port), 8000) }
+        System.currentTimeMillis() - t
+    } catch (e: Exception) {
+        -1L
+    }
+
+    private fun httpCode(item: VaultItem, method: String): Int {
         var conn: HttpURLConnection? = null
         return try {
             conn = URL(item.address).openConnection() as HttpURLConnection

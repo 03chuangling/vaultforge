@@ -80,11 +80,21 @@ object SshClient {
     }
 
     suspend fun probe(item: VaultItem): ProbeResult = withContext(Dispatchers.IO) {
-        val t0 = System.currentTimeMillis()
+        // 1) 先测 TCP 级握手延迟（更接近真实网络延迟，不含密钥交换/认证的额外开销）
+        val tcp0 = System.currentTimeMillis()
+        val tcpMs = try {
+            java.net.Socket().use { s ->
+                s.connect(java.net.InetSocketAddress(item.host, item.port), 6000)
+            }
+            System.currentTimeMillis() - tcp0
+        } catch (e: Exception) {
+            return@withContext ProbeResult(false, -1L, friendly(e))
+        }
+        // 2) 完整 SSH 握手（确认端口背后的服务与凭据可用），界面展示的延迟取 TCP 值
         var session: Session? = null
         try {
             session = openSession(item)
-            ProbeResult(true, System.currentTimeMillis() - t0, "SSH 连接成功")
+            ProbeResult(true, tcpMs, "SSH 连接成功")
         } catch (e: Exception) {
             ProbeResult(false, -1L, friendly(e))
         } finally {

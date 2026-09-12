@@ -154,7 +154,7 @@ fun ItemDetailScreen(
                     metrics = m2
                 }
                 metricsLoading = false
-                delay(5000)
+                delay((settings.sampleSec.coerceIn(1, 600)) * 1000L)
             }
         }
     }
@@ -326,7 +326,7 @@ fun ItemDetailScreen(
                     }
                     else -> {
                         if (settings.chartStyle == "plot") {
-                            PlotCharts(m, cpuHist, memHist, diskHist)
+                            PlotCharts(m, cpuHist, memHist, diskHist, settings.sampleSec)
                         } else {
                             MetricsCharts(m)
                         }
@@ -576,7 +576,7 @@ private fun RateBars(m: SshMetrics) {
     }
 }
 @Composable
-private fun PlotCharts(m: SshMetrics, cpu: List<Float>, mem: List<Float>, disk: List<Float>) {
+private fun PlotCharts(m: SshMetrics, cpu: List<Float>, mem: List<Float>, disk: List<Float>, sampleSec: Int) {
     Column(Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             LegendDot(Brand, "CPU", if (m.cpuPercent >= 0.0) String.format("%.0f%%", m.cpuPercent) else "—")
@@ -641,8 +641,8 @@ private fun PlotCharts(m: SshMetrics, cpu: List<Float>, mem: List<Float>, disk: 
         }
         Spacer(Modifier.height(4.dp))
         Text(
-            if (cpu.size < 2 && mem.size < 2) "正在采样…（每 5 秒一次，趋势将随采样逐步展开）"
-            else "横轴：最近 40 次采样（约每 5 秒一次）",
+            if (cpu.size < 2 && mem.size < 2) "正在采样…（每 " + sampleSec + " 秒一次，趋势将随采样逐步展开）"
+            else "横轴：最近 40 次采样（约每 " + sampleSec + " 秒一次）",
             fontSize = 10.sp,
             color = Text3,
         )

@@ -3,6 +3,7 @@ package com.vaultforge.app.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -77,9 +78,23 @@ fun SettingsScreen(onBack: () -> Unit) {
             Spacer(Modifier.height(8.dp))
             StyleOption(
                 title = "坐标图样式",
-                desc = "折线图展示占用趋势（每 5 秒采样）",
+                desc = "折线图展示占用趋势（当前每 " + settings.sampleSec + " 秒采样）",
                 selected = settings.chartStyle == "plot",
             ) { store.updateSettings(settings.copy(chartStyle = "plot")) }
+            Spacer(Modifier.height(12.dp))
+            Text("坐标图采样间隔", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Text1)
+            Spacer(Modifier.height(2.dp))
+            Text("折线图每隔多久采集一次数据（默认 5 秒）", fontSize = 11.sp, color = Text3)
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(3, 5, 10, 30).forEach { sec ->
+                    TagPill(
+                        text = sec.toString() + "秒",
+                        selected = settings.sampleSec == sec,
+                        onClick = { store.updateSettings(settings.copy(sampleSec = sec)) },
+                    )
+                }
+            }
         }
 
         Spacer(Modifier.height(18.dp))
