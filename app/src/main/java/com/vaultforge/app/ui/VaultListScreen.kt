@@ -8,9 +8,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -21,8 +25,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -39,12 +45,14 @@ private var autoProbedOnce = false
 fun VaultListScreen(
     onOpen: (String) -> Unit,
     onAdd: () -> Unit,
+    onOpenSettings: () -> Unit,
 ) {
     val store = VaultApp.store
     val items by store.items.collectAsState()
     val settings by store.settings.collectAsState()
     var typeFilter by remember { mutableStateOf("") }
     var tagFilter by remember { mutableStateOf<String?>(null) }
+    var search by remember { mutableStateOf("") }
     var probing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
@@ -61,6 +69,14 @@ fun VaultListScreen(
     val filtered = items
         .filter { typeFilter.isEmpty() || it.type == typeFilter }
         .filter { tagFilter == null || it.tags.contains(tagFilter) }
+        .filter { s ->
+            search.isBlank() ||
+                s.name.contains(search, ignoreCase = true) ||
+                s.address.contains(search, ignoreCase = true) ||
+                s.host.contains(search, ignoreCase = true) ||
+                s.endpoint.contains(search, ignoreCase = true) ||
+                s.tags.any { t -> t.contains(search, ignoreCase = true) }
+        }
     val allTags = items.flatMap { it.tags }.distinct().sorted()
 
     Scaffold(
@@ -92,7 +108,9 @@ fun VaultListScreen(
                     }
                 },
                 onCopyToken = { runCatching { clipboard.setText(AnnotatedString(settings.token)) } },
+                onOpenSettings = onOpenSettings,
             )
+            SearchField(value = search, onValueChange = { search = it })
             TypeFilterRow(typeFilter) { typeFilter = it }
             if (allTags.isNotEmpty()) {
                 TagFilterRow(allTags, tagFilter) { tag ->
@@ -100,7 +118,11 @@ fun VaultListScreen(
                 }
             }
             if (filtered.isEmpty()) {
-                EmptyState(onAdd)
+                if (search.isNotBlank()) {
+                    NoResultState(search)
+                } else {
+                    EmptyState(onAdd)
+                }
             } else {
                 LazyColumn(
                     Modifier.fillMaxSize(),
@@ -116,12 +138,63 @@ fun VaultListScreen(
 }
 
 @Composable
+private fun SearchField(value: String, onValueChange: (String) -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 18.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(CardBg)
+            .border(1.dp, LineColor, RoundedCornerShape(10.dp))
+            .padding(horizontal = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Filled.Search,
+            contentDescription = null,
+            tint = Text3,
+            modifier = Modifier.size(18.dp),
+        )
+        Spacer(Modifier.width(8.dp))
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            textStyle = TextStyle(color = Text1, fontSize = 14.sp),
+            cursorBrush = SolidColor(Brand),
+            modifier = Modifier
+                .weight(1f)
+                .padding(vertical = 11.dp),
+            decorationBox = { inner ->
+                Box {
+                    if (value.isEmpty()) {
+                        Text("搜索名称 / 地址 / 标签…", color = Text3, fontSize = 14.sp)
+                    }
+                    inner()
+                }
+            },
+        )
+        if (value.isNotEmpty()) {
+            Icon(
+                Icons.Filled.Close,
+                contentDescription = "清空",
+                tint = Text3,
+                modifier = Modifier
+                    .size(18.dp)
+                    .clickable { onValueChange("") },
+            )
+        }
+    }
+}
+
+@Composable
 private fun ListHeader(
     port: Int,
     token: String,
     probing: Boolean,
     onRefresh: () -> Unit,
     onCopyToken: () -> Unit,
+    onOpenSettings: () -> Unit,
 ) {
     Column(
         Modifier
@@ -133,6 +206,13 @@ private fun ListHeader(
             Spacer(Modifier.width(8.dp))
             Text("VaultForge", fontSize = 12.sp, color = Text3)
             Spacer(Modifier.weight(1f))
+            IconButton(onClick = onOpenSettings) {
+                Icon(
+                    imageVector = Icons.Filled.Settings,
+                    contentDescription = "设置",
+                    tint = Brand,
+                )
+            }
             IconButton(onClick = onRefresh) {
                 Icon(
                     imageVector = Icons.Filled.Refresh,
@@ -268,6 +348,23 @@ private fun TypeBadge(type: String) {
             .background(Brand.copy(alpha = 0.10f))
             .padding(horizontal = 6.dp, vertical = 2.dp),
     )
+}
+
+@Composable
+private fun NoResultState(keyword: String) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .padding(bottom = 80.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text("🔍", fontSize = 36.sp)
+        Spacer(Modifier.height(10.dp))
+        Text("没有找到「$keyword」", fontSize = 15.sp, color = Text1, fontWeight = FontWeight.Medium)
+        Spacer(Modifier.height(4.dp))
+        Text("试试别的关键词，或检查筛选条件", fontSize = 12.sp, color = Text3)
+    }
 }
 
 @Composable

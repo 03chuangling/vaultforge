@@ -146,6 +146,36 @@ object SshClient {
             }
         }
 
+    suspend fun runCommand(item: VaultItem, command: String): String = withContext(Dispatchers.IO) {
+        var session: Session? = null
+        try {
+            session = openSession(item)
+            exec(session, command, 30000)
+        } catch (e: Exception) {
+            "[错误] " + friendly(e)
+        } finally {
+            runCatching { session?.disconnect() }
+        }
+    }
+
+    suspend fun runInContainer(item: VaultItem, container: String, command: String): String =
+        withContext(Dispatchers.IO) {
+            if (!container.matches(Regex("[A-Za-z0-9_.\\-]{1,80}"))) {
+                return@withContext "[错误] 容器名不合法"
+            }
+            val escaped = command.replace("'", "'\\''")
+            val cmd = "docker exec '" + container + "' sh -c '" + escaped + "' 2>&1"
+            var session: Session? = null
+            try {
+                session = openSession(item)
+                exec(session, cmd, 30000)
+            } catch (e: Exception) {
+                "[错误] " + friendly(e)
+            } finally {
+                runCatching { session?.disconnect() }
+            }
+        }
+
     private fun exec(session: Session, command: String, timeoutMs: Int = 15000): String {
         var channel: ChannelExec? = null
         try {

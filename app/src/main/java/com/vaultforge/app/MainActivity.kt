@@ -15,13 +15,17 @@ import androidx.compose.runtime.setValue
 import com.vaultforge.app.server.ServerService
 import com.vaultforge.app.ui.AddItemScreen
 import com.vaultforge.app.ui.ItemDetailScreen
+import com.vaultforge.app.ui.SettingsScreen
+import com.vaultforge.app.ui.TerminalScreen
 import com.vaultforge.app.ui.VaultForgeTheme
 import com.vaultforge.app.ui.VaultListScreen
 
 sealed interface Nav {
     data object List : Nav
     data object Add : Nav
+    data object Settings : Nav
     data class Detail(val id: String) : Nav
+    data class Terminal(val id: String, val container: String?) : Nav
 }
 
 class MainActivity : ComponentActivity() {
@@ -52,14 +56,24 @@ fun AppRoot() {
         is Nav.List -> VaultListScreen(
             onOpen = { nav = Nav.Detail(it) },
             onAdd = { nav = Nav.Add },
+            onOpenSettings = { nav = Nav.Settings },
         )
         is Nav.Add -> AddItemScreen(
             onBack = { nav = Nav.List },
             onSaved = { nav = Nav.List },
         )
+        is Nav.Settings -> SettingsScreen(
+            onBack = { nav = Nav.List },
+        )
         is Nav.Detail -> ItemDetailScreen(
             itemId = n.id,
             onBack = { nav = Nav.List },
+            onOpenTerminal = { c -> nav = Nav.Terminal(n.id, c) },
+        )
+        is Nav.Terminal -> TerminalScreen(
+            itemId = n.id,
+            container = n.container,
+            onBack = { nav = Nav.Detail(n.id) },
         )
     }
 }
