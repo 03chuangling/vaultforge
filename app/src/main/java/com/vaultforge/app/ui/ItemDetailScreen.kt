@@ -72,6 +72,7 @@ fun ItemDetailScreen(
     itemId: String,
     onBack: () -> Unit,
     onOpenTerminal: (String?) -> Unit,
+    onOpenFiles: () -> Unit,
 ) {
     val store = VaultApp.store
     val settings by store.settings.collectAsState()
@@ -382,7 +383,28 @@ fun ItemDetailScreen(
                     }
                 }
             }
-
+            if (item.type == "file") {
+                Spacer(Modifier.height(16.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    SectionTitle("文件管理")
+                    Spacer(Modifier.weight(1f))
+                    Box(
+                        Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Brand)
+                            .clickable { onOpenFiles() }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    ) {
+                        Text("打开文件浏览器", color = Color.White, fontSize = 12.sp)
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "支持 WebDAV / SFTP：在线浏览、下载、上传、删除（FTP / S3 后续版本加入）",
+                    color = Text3,
+                    fontSize = 12.sp,
+                )
+            }
             if (item.type == "api") {
                 Spacer(Modifier.height(16.dp))
                 SectionTitle("说明")

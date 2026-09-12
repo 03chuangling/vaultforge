@@ -67,4 +67,7 @@ dependencies {
 
     // SSH 指标采集 + Docker 容器管理
     implementation("com.github.mwiede:jsch:0.2.17")
+
+    // WebDAV 文件管理
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }

@@ -14,6 +14,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.vaultforge.app.server.ServerService
 import com.vaultforge.app.ui.AddItemScreen
+import com.vaultforge.app.ui.FileBrowserScreen
 import com.vaultforge.app.ui.ItemDetailScreen
 import com.vaultforge.app.ui.SettingsScreen
 import com.vaultforge.app.ui.TerminalScreen
@@ -26,6 +27,7 @@ sealed interface Nav {
     data object Settings : Nav
     data class Detail(val id: String) : Nav
     data class Terminal(val id: String, val container: String?) : Nav
+    data class Files(val id: String) : Nav
 }
 
 class MainActivity : ComponentActivity() {
@@ -69,10 +71,15 @@ fun AppRoot() {
             itemId = n.id,
             onBack = { nav = Nav.List },
             onOpenTerminal = { c -> nav = Nav.Terminal(n.id, c) },
+            onOpenFiles = { nav = Nav.Files(n.id) },
         )
         is Nav.Terminal -> TerminalScreen(
             itemId = n.id,
             container = n.container,
+            onBack = { nav = Nav.Detail(n.id) },
+        )
+        is Nav.Files -> FileBrowserScreen(
+            itemId = n.id,
             onBack = { nav = Nav.Detail(n.id) },
         )
     }
