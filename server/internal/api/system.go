@@ -14,15 +14,19 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GET /api/v1 —— 服务信息（公开，连通性检查用；与 App 本地接口同款）。
+// GET /api/v1 —— 服务信息（公开，连通性检查用）。
 func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
+	register := "open"
+	if s.store.HasAccounts() && !s.cfg.AllowRegister {
+		register = "closed"
+	}
 	ok(w, map[string]any{
-		"name":    "vaultforge-server",
-		"version": s.cfg.Version,
-		"api":     "v1",
-		"auth":    "bearer",
-		"items":   s.store.ItemCount(),
-		"time":    time.Now().UnixMilli(),
+		"name":     "vaultforge-server",
+		"version":  s.cfg.Version,
+		"api":      "v1",
+		"auth":     "account",
+		"register": register,
+		"time":     time.Now().UnixMilli(),
 	})
 }
 

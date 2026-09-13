@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# VaultForge 服务端冒烟测试：临时目录启动实例，验证核心接口与同步链路。
+# VaultForge 服务端冒烟测试（v0.2.0 账号登录版）：
+# 临时目录启动实例，验证注册 / 登录 / 鉴权 + 核心接口与同步链路。
 # 用法：cd server && go build -o vaultforge-server . && ./scripts/smoke.sh [port]
 set -u
 
@@ -12,12 +13,11 @@ if [ ! -x "$BIN" ]; then
   exit 1
 fi
 
-VF_DATA_DIR="$DIR" VF_ADDR="127.0.0.1:$PORT" "$BIN" >"$DIR/server.log" 2>&1 &
+VF_DATA_DIR="$DIR" VF_ADDR="127.0.0.1:$PORT" VF_PBKDF2_ITERS=1000 "$BIN" >"$DIR/server.log" 2>&1 &
 SRV=$!
 trap 'kill $SRV 2>/dev/null' EXIT
 sleep 1
 
-TOKEN="$(cat "$DIR/token.txt")"
 B="http://127.0.0.1:$PORT"
 PASS=0
 FAIL=0
@@ -33,12 +33,28 @@ check() { # check <描述> <期望子串> <实际输出>
   fi
 }
 
-AUTH=(-H "Authorization: Bearer $TOKEN")
 JSON=(-H "Content-Type: application/json")
 
 check "healthz 健康检查" '"code":0' "$(curl -s "$B/healthz")"
-check "服务信息（公开）" '"name":"vaultforge-server"' "$(curl -s "$B/api/v1")"
+check "服务信息（公开）" '"auth":"account"' "$(curl -s "$B/api/v1")"
 check "未鉴权返回 401" '"code":401' "$(curl -s "$B/api/v1/items")"
+
+REG="$(curl -s "${JSON[@]}" -X POST -d '{"username":"smoke","password":"smoke-pass-123"}' "$B/api/v1/auth/register")"
+check "注册引导账号（created）" '"message":"created"' "$REG"
+TOKEN="$(printf '%s' "$REG" | python3 -c 'import json,sys;print(json.load(sys.stdin)["data"]["token"])')"
+check "注册后状态关闭" '"register":"closed"' "$(curl -s "$B/api/v1")"
+check "重复注册被拒（已关闭）" '"code":403' "$(curl -s "${JSON[@]}" -X POST -d '{"username":"other","password":"other-pass-123"}' "$B/api/v1/auth/register")"
+check "错误密码登录被拒" '"code":401' "$(curl -s "${JSON[@]}" -X POST -d '{"username":"smoke","password":"wrong-pass"}' "$B/api/v1/auth/login")"
+
+LOGIN="$(curl -s "${JSON[@]}" -X POST -d '{"username":"smoke","password":"smoke-pass-123"}' "$B/api/v1/auth/login")"
+check "登录成功（签发令牌）" '"token":"vfs_' "$LOGIN"
+TOKEN2="$(printf '%s' "$LOGIN" | python3 -c 'import json,sys;print(json.load(sys.stdin)["data"]["token"])')"
+check "账号信息（me）" '"username":"smoke"' "$(curl -s -H "Authorization: Bearer $TOKEN2" "$B/api/v1/auth/me")"
+
+check "退出登录" '"code":0' "$(curl -s -X POST -H "Authorization: Bearer $TOKEN2" "$B/api/v1/auth/logout")"
+check "退出后令牌失效" '"code":401' "$(curl -s -H "Authorization: Bearer $TOKEN2" "$B/api/v1/items")"
+
+AUTH=(-H "Authorization: Bearer $TOKEN")
 check "条目列表（空）" '[]' "$(curl -s "${AUTH[@]}" "$B/api/v1/items")"
 
 CREATE="$(curl -s "${AUTH[@]}" "${JSON[@]}" -X POST \

@@ -19,7 +19,7 @@ func (s *Server) handleSyncPull(w http.ResponseWriter, r *http.Request) {
 	if req.Since < 0 {
 		req.Since = 0
 	}
-	items, deleted := s.store.Pull(req.Since)
+	items, deleted := s.store.Pull(userID(r), req.Since)
 	ok(w, model.SyncPullResponse{
 		ServerTime: time.Now().UnixMilli(),
 		Items:      items,
@@ -37,7 +37,7 @@ func (s *Server) handleSyncPush(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "invalid json: "+err.Error())
 		return
 	}
-	accepted, conflicts, err := s.store.Push(req.Items)
+	accepted, conflicts, err := s.store.Push(userID(r), req.Items)
 	if err != nil {
 		fail(w, http.StatusInternalServerError, "同步失败: "+err.Error())
 		return

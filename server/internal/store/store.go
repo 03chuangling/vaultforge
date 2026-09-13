@@ -22,14 +22,42 @@ var ErrNotFound = errors.New("item not found")
 // ErrInvalid 表示传入的条目数据不合法。
 var ErrInvalid = errors.New("invalid item")
 
-const schemaVersion = 1
+// ErrUsernameTaken 表示用户名已被占用。
+var ErrUsernameTaken = errors.New("username taken")
 
-// FileData 是服务端落盘结构（data/vaultforge_server.json）。
-// Items 为全量条目（含墓碑，deleted=true），Settings 为端侧设置镜像。
-type FileData struct {
-	Meta     Meta               `json:"meta"`
-	Settings map[string]any     `json:"settings"`
+const schemaVersion = 2
+
+// Account 账号：密码只保存盐与 PBKDF2 哈希。
+type Account struct {
+	ID           string `json:"id"`
+	Username     string `json:"username"`
+	Salt         string `json:"salt"`
+	PasswordHash string `json:"passwordHash"`
+	Iterations   int    `json:"iterations"`
+	CreatedAt    int64  `json:"createdAt"`
+}
+
+// Session 登录会话（map 键为令牌的 SHA-256 hex）。
+type Session struct {
+	UserID    string `json:"userId"`
+	CreatedAt int64  `json:"createdAt"`
+	ExpiresAt int64  `json:"expiresAt"`
+}
+
+// UserVault 单个用户的保险库数据。
+type UserVault struct {
 	Items    []*model.VaultItem `json:"items"`
+	Settings map[string]any     `json:"settings"`
+}
+
+// FileData 是服务端落盘结构（data/vaultforge_server.json，schema v2）。
+// Legacy 为 v1 旧格式数据暂存区：第一个注册的账号会自动继承。
+type FileData struct {
+	Meta     Meta                  `json:"meta"`
+	Accounts map[string]*Account   `json:"accounts"`
+	Sessions map[string]*Session   `json:"sessions"`
+	Vaults   map[string]*UserVault `json:"vaults"`
+	Legacy   *UserVault            `json:"legacy,omitempty"`
 }
 
 // Meta 记录文件级元信息。
@@ -39,13 +67,12 @@ type Meta struct {
 	LastSavedAt   int64 `json:"lastSavedAt"`
 }
 
-// Store 是内存索引 + JSON 文件持久化的存储层，全部方法并发安全。
+// Store 是内存数据 + JSON 文件持久化的存储层，全部方法并发安全。
 // 后续如需切换 SQLite / PostgreSQL，保持方法集不变即可平滑替换。
 type Store struct {
 	mu   sync.RWMutex
 	path string
 	file FileData
-	byID map[string]*model.VaultItem
 }
 
 // Open 加载（或初始化）指定目录下的数据文件。
@@ -53,10 +80,7 @@ func Open(dir string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("创建数据目录失败: %w", err)
 	}
-	s := &Store{
-		path: filepath.Join(dir, "vaultforge_server.json"),
-		byID: map[string]*model.VaultItem{},
-	}
+	s := &Store{path: filepath.Join(dir, "vaultforge_server.json")}
 	if err := s.load(); err != nil {
 		return nil, err
 	}
@@ -68,37 +92,71 @@ func (s *Store) Path() string { return s.path }
 
 func (s *Store) load() error {
 	raw, err := os.ReadFile(s.path)
-	fresh := false
 	if errors.Is(err, os.ErrNotExist) {
-		fresh = true
 		s.file = FileData{Meta: Meta{SchemaVersion: schemaVersion, CreatedAt: nowMs()}}
-	} else if err != nil {
+		s.ensureInit()
+		return nil
+	}
+	if err != nil {
 		return err
-	} else if err := json.Unmarshal(raw, &s.file); err != nil {
+	}
+
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &probe); err != nil {
 		return fmt.Errorf("解析数据文件失败: %w", err)
 	}
-	if s.file.Items == nil {
-		s.file.Items = []*model.VaultItem{}
+
+	if _, isV2 := probe["accounts"]; isV2 {
+		if err := json.Unmarshal(raw, &s.file); err != nil {
+			return fmt.Errorf("解析数据文件失败: %w", err)
+		}
+	} else {
+		// v1（全局 items/settings）→ v2 迁移：暂存为 Legacy，等待账号继承。
+		var old struct {
+			Meta     Meta               `json:"meta"`
+			Settings map[string]any     `json:"settings"`
+			Items    []*model.VaultItem `json:"items"`
+		}
+		if err := json.Unmarshal(raw, &old); err != nil {
+			return fmt.Errorf("解析 v1 数据文件失败: %w", err)
+		}
+		s.file = FileData{Meta: Meta{SchemaVersion: schemaVersion, CreatedAt: nowMs()}}
+		if old.Meta.CreatedAt > 0 {
+			s.file.Meta.CreatedAt = old.Meta.CreatedAt
+		}
+		if old.Meta.LastSavedAt > 0 {
+			s.file.Meta.LastSavedAt = old.Meta.LastSavedAt
+		}
+		if len(old.Items) > 0 || len(old.Settings) > 0 {
+			if old.Items == nil {
+				old.Items = []*model.VaultItem{}
+			}
+			if old.Settings == nil {
+				old.Settings = map[string]any{}
+			}
+			s.file.Legacy = &UserVault{Items: old.Items, Settings: old.Settings}
+		}
 	}
-	if s.file.Settings == nil {
-		s.file.Settings = map[string]any{}
-	}
-	if s.file.Meta.SchemaVersion == 0 {
-		s.file.Meta.SchemaVersion = schemaVersion
-	}
-	s.reindexLocked()
-	if fresh {
-		return s.saveLocked()
-	}
+
+	s.ensureInit()
 	return nil
 }
 
-func (s *Store) reindexLocked() {
-	s.byID = make(map[string]*model.VaultItem, len(s.file.Items))
-	for _, it := range s.file.Items {
-		if it != nil && it.ID != "" {
-			s.byID[it.ID] = it
-		}
+func (s *Store) ensureInit() {
+	if s.file.Accounts == nil {
+		s.file.Accounts = map[string]*Account{}
+	}
+	if s.file.Sessions == nil {
+		s.file.Sessions = map[string]*Session{}
+	}
+	if s.file.Vaults == nil {
+		s.file.Vaults = map[string]*UserVault{}
+	}
+	if s.file.Meta.SchemaVersion < schemaVersion {
+		s.file.Meta.SchemaVersion = schemaVersion
+	}
+	if s.file.Meta.CreatedAt == 0 {
+		s.file.Meta.CreatedAt = nowMs()
 	}
 }
 
@@ -116,28 +174,144 @@ func (s *Store) saveLocked() error {
 	return os.Rename(tmp, s.path)
 }
 
-// putLocked 写入或替换条目（不落盘）。调用方须持有写锁。
-func (s *Store) putLocked(item *model.VaultItem) {
-	for i, it := range s.file.Items {
-		if it != nil && it.ID == item.ID {
-			s.file.Items[i] = item
-			s.byID[item.ID] = item
-			return
+// ---- 账号 ----
+
+// HasAccounts 返回是否已有账号（决定注册是否开放）。
+func (s *Store) HasAccounts() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.file.Accounts) > 0
+}
+
+// FindAccountByUsername 按用户名（大小写不敏感）查找；不存在返回 nil。
+func (s *Store) FindAccountByUsername(username string) *Account {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, a := range s.file.Accounts {
+		if a != nil && strings.EqualFold(a.Username, username) {
+			cp := *a
+			return &cp
 		}
 	}
-	s.file.Items = append(s.file.Items, item)
-	s.byID[item.ID] = item
+	return nil
+}
+
+// GetAccount 按 id 查找；不存在返回 nil。
+func (s *Store) GetAccount(id string) *Account {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	a := s.file.Accounts[id]
+	if a == nil {
+		return nil
+	}
+	cp := *a
+	return &cp
+}
+
+// AddAccount 创建账号（用户名唯一）；第一个账号自动继承旧数据。
+func (s *Store) AddAccount(username, salt, hash string, iterations int) (*Account, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, a := range s.file.Accounts {
+		if a != nil && strings.EqualFold(a.Username, username) {
+			return nil, ErrUsernameTaken
+		}
+	}
+	acct := &Account{
+		ID:           NewID(),
+		Username:     username,
+		Salt:         salt,
+		PasswordHash: hash,
+		Iterations:   iterations,
+		CreatedAt:    nowMs(),
+	}
+	s.file.Accounts[acct.ID] = acct
+
+	if s.file.Legacy != nil {
+		s.file.Vaults[acct.ID] = s.file.Legacy
+		s.file.Legacy = nil
+	}
+
+	if err := s.saveLocked(); err != nil {
+		return nil, err
+	}
+	cp := *acct
+	return &cp, nil
+}
+
+// ---- 会话 ----
+
+// AddSession 保存会话（tokenHash = 令牌的 SHA-256 hex）。
+func (s *Store) AddSession(tokenHash, userID string, expiresAt int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.file.Sessions[tokenHash] = &Session{UserID: userID, CreatedAt: nowMs(), ExpiresAt: expiresAt}
+	s.cleanupExpiredLocked()
+	return s.saveLocked()
+}
+
+// GetSession 按令牌哈希查找会话；不存在返回 nil。
+func (s *Store) GetSession(tokenHash string) *Session {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	sess := s.file.Sessions[tokenHash]
+	if sess == nil {
+		return nil
+	}
+	cp := *sess
+	return &cp
+}
+
+// DeleteSession 删除会话；返回原本是否存在。
+func (s *Store) DeleteSession(tokenHash string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.file.Sessions[tokenHash]; !ok {
+		return false
+	}
+	delete(s.file.Sessions, tokenHash)
+	_ = s.saveLocked()
+	return true
+}
+
+func (s *Store) cleanupExpiredLocked() {
+	now := nowMs()
+	for k, v := range s.file.Sessions {
+		if v == nil || v.ExpiresAt <= now {
+			delete(s.file.Sessions, k)
+		}
+	}
+}
+
+// ---- 保险库（按用户隔离） ----
+
+func (s *Store) vaultLocked(userID string) *UserVault {
+	v := s.file.Vaults[userID]
+	if v == nil {
+		v = &UserVault{}
+		s.file.Vaults[userID] = v
+	}
+	if v.Items == nil {
+		v.Items = []*model.VaultItem{}
+	}
+	if v.Settings == nil {
+		v.Settings = map[string]any{}
+	}
+	return v
 }
 
 // ---- 条目读取 ----
 
-// ListItems 返回未删除条目；支持 type 过滤、名称模糊搜索（q）、标签过滤（tag）。
-// 按 updatedAt 倒序（与 App 列表一致：最近更新在前）。
-func (s *Store) ListItems(itemType, q, tag string) []*model.VaultItem {
+// ListItems 返回该用户未删除条目；支持 type 过滤、名称模糊搜索（q）、标签过滤（tag）。
+func (s *Store) ListItems(userID, itemType, q, tag string) []*model.VaultItem {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]*model.VaultItem, 0, len(s.file.Items))
-	for _, it := range s.file.Items {
+	v := s.file.Vaults[userID]
+	if v == nil {
+		return []*model.VaultItem{}
+	}
+	out := make([]*model.VaultItem, 0, len(v.Items))
+	for _, it := range v.Items {
 		if it == nil || it.Deleted {
 			continue
 		}
@@ -156,41 +330,29 @@ func (s *Store) ListItems(itemType, q, tag string) []*model.VaultItem {
 	return out
 }
 
-// GetItem 按 id 取未删除条目；不存在返回 nil。
-func (s *Store) GetItem(id string) *model.VaultItem {
+// GetItem 按 id 取该用户未删除条目；不存在返回 nil。
+func (s *Store) GetItem(userID, id string) *model.VaultItem {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	it := s.byID[id]
+	v := s.file.Vaults[userID]
+	if v == nil {
+		return nil
+	}
+	it := findItemLocked(v, id)
 	if it == nil || it.Deleted {
 		return nil
 	}
 	return clone(it)
 }
 
-// ItemCount 返回未删除条目数。
-func (s *Store) ItemCount() int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	n := 0
-	for _, it := range s.file.Items {
-		if it != nil && !it.Deleted {
-			n++
-		}
-	}
-	return n
-}
-
 // ---- 条目写入 ----
 
 // UpsertItem 新建或覆盖条目（App upsert 语义）：
 // id 为空则生成 UUID，updatedAt 置为当前，createdAt 为空则补齐。
-func (s *Store) UpsertItem(item *model.VaultItem) (*model.VaultItem, error) {
+func (s *Store) UpsertItem(userID string, item *model.VaultItem) (*model.VaultItem, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.upsertLocked(item)
-}
-
-func (s *Store) upsertLocked(item *model.VaultItem) (*model.VaultItem, error) {
+	v := s.vaultLocked(userID)
 	now := nowMs()
 	if item.ID == "" {
 		item.ID = NewID()
@@ -198,7 +360,7 @@ func (s *Store) upsertLocked(item *model.VaultItem) (*model.VaultItem, error) {
 	if item.UpdatedAt <= 0 {
 		item.UpdatedAt = now
 	}
-	old := s.byID[item.ID]
+	old := findItemLocked(v, item.ID)
 	if item.CreatedAt <= 0 {
 		if old != nil && old.CreatedAt > 0 {
 			item.CreatedAt = old.CreatedAt
@@ -206,7 +368,7 @@ func (s *Store) upsertLocked(item *model.VaultItem) (*model.VaultItem, error) {
 			item.CreatedAt = now
 		}
 	}
-	s.putLocked(item)
+	putItemLocked(v, item)
 	if err := s.saveLocked(); err != nil {
 		return nil, err
 	}
@@ -214,12 +376,15 @@ func (s *Store) upsertLocked(item *model.VaultItem) (*model.VaultItem, error) {
 }
 
 // PatchItem 部分更新（与 App 本地 PATCH 语义对齐）：
-// 仅白名单字段（name/tags/protocol/address/host/port/username/authMethod/
-// secret/privateKey/endpoint/apiKey/demoCode）可改，updatedAt 自动刷新。
-func (s *Store) PatchItem(id string, patch map[string]any) (*model.VaultItem, error) {
+// 仅白名单字段可改，updatedAt 自动刷新。
+func (s *Store) PatchItem(userID, id string, patch map[string]any) (*model.VaultItem, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	it := s.byID[id]
+	v := s.file.Vaults[userID]
+	if v == nil {
+		return nil, ErrNotFound
+	}
+	it := findItemLocked(v, id)
 	if it == nil || it.Deleted {
 		return nil, ErrNotFound
 	}
@@ -234,8 +399,8 @@ func (s *Store) PatchItem(id string, patch map[string]any) (*model.VaultItem, er
 	if err := json.Unmarshal(raw, &merged); err != nil {
 		return nil, err
 	}
-	for k, v := range sanitized {
-		merged[k] = v
+	for k, val := range sanitized {
+		merged[k] = val
 	}
 	merged["updatedAt"] = nowMs()
 
@@ -251,7 +416,7 @@ func (s *Store) PatchItem(id string, patch map[string]any) (*model.VaultItem, er
 		return nil, fmt.Errorf("%w：%v", ErrInvalid, err)
 	}
 	next.ID = id
-	s.putLocked(next)
+	putItemLocked(v, next)
 	if err := s.saveLocked(); err != nil {
 		return nil, err
 	}
@@ -259,11 +424,14 @@ func (s *Store) PatchItem(id string, patch map[string]any) (*model.VaultItem, er
 }
 
 // DeleteItem 软删除（墓碑）：记录保留并标记 deleted，供同步下发。
-// 已删除或不存在返回 ErrNotFound。
-func (s *Store) DeleteItem(id string) (*model.VaultItem, error) {
+func (s *Store) DeleteItem(userID, id string) (*model.VaultItem, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	it := s.byID[id]
+	v := s.file.Vaults[userID]
+	if v == nil {
+		return nil, ErrNotFound
+	}
+	it := findItemLocked(v, id)
 	if it == nil || it.Deleted {
 		return nil, ErrNotFound
 	}
@@ -276,19 +444,23 @@ func (s *Store) DeleteItem(id string) (*model.VaultItem, error) {
 }
 
 // SetTags 覆盖标签（与 App PUT /items/{id}/tags 一致）。
-func (s *Store) SetTags(id string, tags []string) (*model.VaultItem, error) {
-	return s.PatchItem(id, map[string]any{"tags": tags})
+func (s *Store) SetTags(userID, id string, tags []string) (*model.VaultItem, error) {
+	return s.PatchItem(userID, id, map[string]any{"tags": tags})
 }
 
 // ---- 同步 ----
 
 // Pull 增量拉取：返回 updatedAt > since 的条目与删除 id 列表（0 = 全量）。
-func (s *Store) Pull(since int64) ([]*model.VaultItem, []string) {
+func (s *Store) Pull(userID string, since int64) ([]*model.VaultItem, []string) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	items := make([]*model.VaultItem, 0)
 	deleted := make([]string, 0)
-	for _, it := range s.file.Items {
+	v := s.file.Vaults[userID]
+	if v == nil {
+		return items, deleted
+	}
+	for _, it := range v.Items {
 		if it == nil || it.UpdatedAt <= since {
 			continue
 		}
@@ -304,11 +476,12 @@ func (s *Store) Pull(since int64) ([]*model.VaultItem, []string) {
 
 // Push 批量推送（LWW）：incoming.updatedAt >= 服务端版本则接受；
 // 否则记为冲突并返回服务端当前版本。
-func (s *Store) Push(items []*model.VaultItem) ([]string, []model.SyncConflict, error) {
+func (s *Store) Push(userID string, items []*model.VaultItem) ([]string, []model.SyncConflict, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	accepted := make([]string, 0, len(items))
 	conflicts := make([]model.SyncConflict, 0)
+	v := s.vaultLocked(userID)
 	now := nowMs()
 	for _, in := range items {
 		if in == nil {
@@ -320,7 +493,7 @@ func (s *Store) Push(items []*model.VaultItem) ([]string, []model.SyncConflict, 
 		if in.UpdatedAt <= 0 {
 			in.UpdatedAt = now
 		}
-		old := s.byID[in.ID]
+		old := findItemLocked(v, in.ID)
 		if old != nil && in.UpdatedAt < old.UpdatedAt {
 			conflicts = append(conflicts, model.SyncConflict{ID: in.ID, ServerItem: clone(old)})
 			continue
@@ -332,7 +505,7 @@ func (s *Store) Push(items []*model.VaultItem) ([]string, []model.SyncConflict, 
 				in.CreatedAt = in.UpdatedAt
 			}
 		}
-		s.putLocked(in)
+		putItemLocked(v, in)
 		accepted = append(accepted, in.ID)
 	}
 	if len(accepted) > 0 {
@@ -345,30 +518,35 @@ func (s *Store) Push(items []*model.VaultItem) ([]string, []model.SyncConflict, 
 
 // ---- 设置镜像 ----
 
-// Settings 返回设置镜像的浅拷贝。
-func (s *Store) Settings() map[string]any {
+// Settings 返回该用户设置镜像的浅拷贝。
+func (s *Store) Settings(userID string) map[string]any {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make(map[string]any, len(s.file.Settings))
-	for k, v := range s.file.Settings {
-		out[k] = v
+	out := map[string]any{}
+	v := s.file.Vaults[userID]
+	if v == nil {
+		return out
+	}
+	for k, val := range v.Settings {
+		out[k] = val
 	}
 	return out
 }
 
-// MergeSettings 浅合并设置并落盘，返回合并结果。
-func (s *Store) MergeSettings(patch map[string]any) (map[string]any, error) {
+// MergeSettings 浅合并该用户设置并落盘，返回合并结果。
+func (s *Store) MergeSettings(userID string, patch map[string]any) (map[string]any, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for k, v := range patch {
-		s.file.Settings[k] = v
+	v := s.vaultLocked(userID)
+	for k, val := range patch {
+		v.Settings[k] = val
 	}
 	if err := s.saveLocked(); err != nil {
 		return nil, err
 	}
-	out := make(map[string]any, len(s.file.Settings))
-	for k, v := range s.file.Settings {
-		out[k] = v
+	out := make(map[string]any, len(v.Settings))
+	for k, val := range v.Settings {
+		out[k] = val
 	}
 	return out, nil
 }
@@ -431,6 +609,25 @@ func sanitizePatch(patch map[string]any) map[string]any {
 		}
 	}
 	return out
+}
+
+func putItemLocked(v *UserVault, item *model.VaultItem) {
+	for i, it := range v.Items {
+		if it != nil && it.ID == item.ID {
+			v.Items[i] = item
+			return
+		}
+	}
+	v.Items = append(v.Items, item)
+}
+
+func findItemLocked(v *UserVault, id string) *model.VaultItem {
+	for _, it := range v.Items {
+		if it != nil && it.ID == id {
+			return it
+		}
+	}
+	return nil
 }
 
 func nowMs() int64 { return time.Now().UnixMilli() }

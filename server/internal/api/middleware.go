@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"time"
@@ -8,14 +9,32 @@ import (
 	"github.com/03chuangling/vaultforge/server/internal/auth"
 )
 
-// authed 校验 Authorization: Bearer <token>（与 App 本地接口同一约定）。
+// ctxUserID 请求上下文中的用户 id 键。
+type ctxKey string
+
+const ctxUserID ctxKey = "user_id"
+
+// userID 取出当前请求的登录用户 id。
+func userID(r *http.Request) string {
+	v, _ := r.Context().Value(ctxUserID).(string)
+	return v
+}
+
+// authed 校验会话令牌（Authorization: Bearer <token>），并把用户注入上下文。
 func (s *Server) authed(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !auth.CheckBearer(r.Header.Get("Authorization"), s.token) {
+		token, okv := auth.BearerToken(r.Header.Get("Authorization"))
+		if !okv {
 			fail(w, http.StatusUnauthorized, "unauthorized：请携带 Authorization: Bearer <token>")
 			return
 		}
-		next(w, r)
+		sess := s.store.GetSession(auth.HashToken(token))
+		if sess == nil || time.Now().UnixMilli() >= sess.ExpiresAt {
+			fail(w, http.StatusUnauthorized, "登录已过期，请重新登录")
+			return
+		}
+		ctx := context.WithValue(r.Context(), ctxUserID, sess.UserID)
+		next(w, r.WithContext(ctx))
 	}
 }
 

@@ -1,49 +1,41 @@
+// Package auth 提供密码哈希（PBKDF2-HMAC-SHA256）与会话令牌工具。
 package auth
 
 import (
 	"crypto/rand"
-	"crypto/subtle"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 )
 
-// LoadOrCreateToken 读取或生成服务端访问令牌。
-// 优先级：环境变量 VF_TOKEN > <dataDir>/token.txt > 生成并落盘（0600）。
-// 令牌格式与 App 本地接口一致：vf_ + 24 位 hex。
-func LoadOrCreateToken(dataDir string) (string, error) {
-	if v := strings.TrimSpace(os.Getenv("VF_TOKEN")); v != "" {
-		return v, nil
-	}
-	path := filepath.Join(dataDir, "token.txt")
-	if raw, err := os.ReadFile(path); err == nil {
-		if v := strings.TrimSpace(string(raw)); v != "" {
-			return v, nil
-		}
-	}
-	token := "vf_" + randHex(12)
-	if err := os.WriteFile(path, []byte(token+"\n"), 0o600); err != nil {
-		return "", fmt.Errorf("生成令牌失败: %w", err)
-	}
-	return token, nil
-}
+// SessionTokenPrefix 会话令牌前缀（作为 Bearer 令牌使用）。
+const SessionTokenPrefix = "vfs_"
 
-// CheckBearer 校验 Authorization 头的 "Bearer <token>"。
-// 使用常量时间比较，避免时序侧信道。
-func CheckBearer(header, token string) bool {
-	got := strings.TrimPrefix(header, "Bearer ")
-	if len(got) != len(token) {
-		return false
-	}
-	return subtle.ConstantTimeCompare([]byte(got), []byte(token)) == 1
-}
-
-func randHex(n int) string {
-	b := make([]byte, n)
+// NewSessionToken 生成随机会话令牌：vfs_ + 32 位 hex。
+func NewSessionToken() (string, error) {
+	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
-		panic("crypto/rand 不可用: " + err.Error())
+		return "", fmt.Errorf("生成会话令牌失败: %w", err)
 	}
-	return hex.EncodeToString(b)
+	return SessionTokenPrefix + hex.EncodeToString(b), nil
+}
+
+// HashToken 计算令牌的 SHA-256（hex）；服务端只保存哈希。
+func HashToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
+// BearerToken 从 Authorization 头提取 Bearer 令牌。
+func BearerToken(header string) (string, bool) {
+	const prefix = "Bearer "
+	if !strings.HasPrefix(header, prefix) {
+		return "", false
+	}
+	tok := strings.TrimSpace(strings.TrimPrefix(header, prefix))
+	if tok == "" {
+		return "", false
+	}
+	return tok, true
 }

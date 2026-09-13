@@ -11,7 +11,7 @@ import (
 // GET /api/v1/items?type=&q=&tag= —— 条目列表（与 App 一致：data 为数组）。
 func (s *Server) handleItemsList(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	items := s.store.ListItems(q.Get("type"), q.Get("q"), q.Get("tag"))
+	items := s.store.ListItems(userID(r), q.Get("type"), q.Get("q"), q.Get("tag"))
 	ok(w, items)
 }
 
@@ -26,7 +26,7 @@ func (s *Server) handleItemCreate(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	saved, err := s.store.UpsertItem(&item)
+	saved, err := s.store.UpsertItem(userID(r), &item)
 	if err != nil {
 		fail(w, http.StatusInternalServerError, "保存失败: "+err.Error())
 		return
@@ -36,7 +36,7 @@ func (s *Server) handleItemCreate(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/v1/items/{id} —— 条目详情。
 func (s *Server) handleItemGet(w http.ResponseWriter, r *http.Request) {
-	item := s.store.GetItem(r.PathValue("id"))
+	item := s.store.GetItem(userID(r), r.PathValue("id"))
 	if item == nil {
 		fail(w, http.StatusNotFound, "item not found")
 		return
@@ -51,7 +51,7 @@ func (s *Server) handleItemPatch(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "invalid json: "+err.Error())
 		return
 	}
-	item, err := s.store.PatchItem(r.PathValue("id"), patch)
+	item, err := s.store.PatchItem(userID(r), r.PathValue("id"), patch)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		fail(w, http.StatusNotFound, "item not found")
@@ -67,7 +67,7 @@ func (s *Server) handleItemPatch(w http.ResponseWriter, r *http.Request) {
 // DELETE /api/v1/items/{id} —— 软删除（墓碑，供同步下发）。
 func (s *Server) handleItemDelete(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if _, err := s.store.DeleteItem(id); err != nil {
+	if _, err := s.store.DeleteItem(userID(r), id); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			fail(w, http.StatusNotFound, "item not found")
 			return
@@ -90,7 +90,7 @@ func (s *Server) handleItemSetTags(w http.ResponseWriter, r *http.Request) {
 	if body.Tags == nil {
 		body.Tags = []string{}
 	}
-	item, err := s.store.SetTags(r.PathValue("id"), body.Tags)
+	item, err := s.store.SetTags(userID(r), r.PathValue("id"), body.Tags)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		fail(w, http.StatusNotFound, "item not found")

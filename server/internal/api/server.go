@@ -7,27 +7,31 @@ import (
 	"github.com/03chuangling/vaultforge/server/internal/store"
 )
 
-// Server 聚合配置、存储与鉴权，对外暴露完整的路由表。
+// Server 聚合配置、存储与限流，对外暴露完整的路由表。
 type Server struct {
 	cfg   config.Config
 	store *store.Store
-	token string
+	rl    *rateLimiter
 }
 
 // New 构造服务实例。
-func New(cfg config.Config, st *store.Store, token string) *Server {
-	return &Server{cfg: cfg, store: st, token: token}
+func New(cfg config.Config, st *store.Store) *Server {
+	return &Server{cfg: cfg, store: st, rl: newRateLimiter()}
 }
 
 // Handler 返回带日志中间件的路由表（Go 1.22 ServeMux：方法 + 路径模式）。
 //
 // 公开接口：
 //
-//	GET /healthz          健康检查
-//	GET /api/v1           服务信息
+//	GET  /healthz              健康检查
+//	GET  /api/v1               服务信息
+//	POST /api/v1/auth/register 注册账号
+//	POST /api/v1/auth/login    登录（签发会话令牌）
 //
-// 业务接口（Bearer 鉴权）：
+// 业务接口（Bearer 会话令牌）：
 //
+//	POST   /api/v1/auth/logout          退出登录
+//	GET    /api/v1/auth/me              当前账号信息
 //	GET    /api/v1/items                条目列表（?type=&q=&tag=）
 //	POST   /api/v1/items                新建条目
 //	GET    /api/v1/items/{id}           条目详情
@@ -39,14 +43,19 @@ func New(cfg config.Config, st *store.Store, token string) *Server {
 //	POST   /api/v1/sync/pull            增量拉取
 //	POST   /api/v1/sync/push            批量推送
 //
-// 下一阶段路线：/api/v1/auth/*（账号体系）、/api/v1/devices（设备）、
-// /api/v1/agent/*（远程探测队列）。
+// 下一阶段路线：/api/v1/devices（设备管理）、/api/v1/agent/*（远程探测队列）、2FA。
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
 	// —— 公开接口 ——
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 	mux.HandleFunc("GET /api/v1", s.handleInfo)
+	mux.HandleFunc("POST /api/v1/auth/register", s.handleRegister)
+	mux.HandleFunc("POST /api/v1/auth/login", s.handleLogin)
+
+	// —— 账号（需登录） ——
+	mux.HandleFunc("POST /api/v1/auth/logout", s.authed(s.handleLogout))
+	mux.HandleFunc("GET /api/v1/auth/me", s.authed(s.handleMe))
 
 	// —— 条目 ——
 	mux.HandleFunc("GET /api/v1/items", s.authed(s.handleItemsList))

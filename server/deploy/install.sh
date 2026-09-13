@@ -2,7 +2,7 @@
 # VaultForge Server 一键安装脚本（systemd，需 root）。
 #
 # 用法：
-#   1) 上传发布包：scp vaultforge-server-v0.1.0-linux-amd64.tar.gz root@<server>:/tmp/
+#   1) 上传发布包：scp vaultforge-server-v0.2.0-linux-amd64.tar.gz root@<server>:/tmp/
 #   2) 解压并安装：
 #      cd /tmp && tar xzf vaultforge-server-*.tar.gz
 #      cd vaultforge-server-*/ && sudo ./install.sh
@@ -34,6 +34,7 @@ sleep 1
 echo "==> 服务状态："
 systemctl status vaultforge-server --no-pager 2>/dev/null | head -10 || true
 echo
-echo "访问令牌：cat $DEST/data/token.txt"
 echo "健康检查：curl http://127.0.0.1:8787/healthz"
+echo "首次使用：注册账号（第一个账号会自动继承旧数据），例如："
+echo "  curl -X POST http://127.0.0.1:8787/api/v1/auth/register -H 'Content-Type: application/json' -d '{\"username\":\"admin\",\"password\":\"your-pass\"}'"
 echo "说明：服务默认仅监听 127.0.0.1，公网访问请配置 nginx/caddy TLS 反代。"

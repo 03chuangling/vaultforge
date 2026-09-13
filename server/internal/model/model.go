@@ -98,3 +98,25 @@ type SyncPushResponse struct {
 	Accepted  []string       `json:"accepted"`
 	Conflicts []SyncConflict `json:"conflicts"`
 }
+
+// ---- 账号（鉴权）契约 ----
+
+// AuthRequest 注册 / 登录请求。
+type AuthRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+// UserInfo 对外暴露的账号信息（不含任何凭据）。
+type UserInfo struct {
+	ID        string `json:"id"`
+	Username  string `json:"username"`
+	CreatedAt int64  `json:"createdAt"`
+}
+
+// AuthData 注册 / 登录成功后的响应数据。
+type AuthData struct {
+	User      *UserInfo `json:"user"`
+	Token     string    `json:"token"`
+	ExpiresAt int64     `json:"expiresAt"`
+}
