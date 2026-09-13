@@ -71,6 +71,10 @@ func New(cfg config.Config, st *store.Store) *Server {
 //	POST /api/v1/sync/pull                增量拉取
 //	POST /api/v1/sync/push                批量推送
 //
+// Bitwarden 对接（v0.4.0）：
+//
+//	POST /api/v1/bitwarden/pull           连接 Bitwarden/Vaultwarden 拉取解密条目
+//
 // 下一阶段路线：/api/v1/devices（设备管理）、/api/v1/agent/*（远程探测队列）、2FA。
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
@@ -123,6 +127,9 @@ func (s *Server) Handler() http.Handler {
 	// —— 同步 ——
 	mux.HandleFunc("POST /api/v1/sync/pull", s.authed(s.handleSyncPull))
 	mux.HandleFunc("POST /api/v1/sync/push", s.authed(s.handleSyncPush))
+
+	// —— Bitwarden 对接（v0.4.0） ——
+	mux.HandleFunc("POST /api/v1/bitwarden/pull", s.authed(s.handleBitwardenPull))
 
 	// —— 兜底（JSON 404） ——
 	mux.HandleFunc("/", s.handleNotFound)

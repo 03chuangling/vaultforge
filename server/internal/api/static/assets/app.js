@@ -78,6 +78,7 @@ window.App = {
         case 'item': await Views.item(main, segs[1]); break;
         case 'term': await Views.term(main, segs[1], params); break;
         case 'files': await Views.files(main, segs[1], params); break;
+        case 'bitwarden': await Views.bitwarden(main); break;
         case 'settings': await Views.settings(main); break;
         default: await Views.dash(main);
       }

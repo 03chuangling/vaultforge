@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# VaultForge 服务端冒烟测试（v0.3.0 Web 面板版）：
+# VaultForge 服务端冒烟测试（v0.4.0）：
 # 临时目录启动实例，验证注册 / 登录 / 鉴权 / 同步 / 条目动作 / Web 面板静态资源
-# 与 v0.3.0 新增接口（stats / export / sessions / password / batch / check）。
+# v0.3.0 接口（stats / export / sessions / password / batch / check）
+# 与 v0.4.0 新增的 Bitwarden / Vaultwarden 对接接口（/api/v1/bitwarden/pull）。
 # 用法：cd server && go build -o vaultforge-server . && ./scripts/smoke.sh [port]
 set -u
 
@@ -129,6 +130,13 @@ check "SSH 执行命令（连接失败 502）" '"code":502' "$(curl -s "${AUTH[@
 # 当前会话不可吊销
 CURID="$(curl -s "${AUTH[@]}" "$B/api/v1/auth/sessions" | python3 -c 'import json,sys; s=json.load(sys.stdin)["data"]["sessions"]; print([x["id"] for x in s if x["current"]][0])')"
 check "吊销当前会话被拒" '"code":400' "$(curl -s "${AUTH[@]}" -X DELETE "$B/api/v1/auth/sessions/$CURID")"
+
+# ============ v0.4.0：Bitwarden / Vaultwarden 对接 ============
+
+check "Web 导航含 Bitwarden" 'data-nav="bitwarden"' "$(curl -s "$B/")"
+check "静态资源 views_c.js" 'Views.bitwarden' "$(curl -s "$B/assets/views_c.js")"
+check "bitwarden/pull 未鉴权 401" '"code":401' "$(curl -s "${JSON[@]}" -X POST -d '{"server":"https://example.com","email":"a@b.c","password":"x"}' "$B/api/v1/bitwarden/pull")"
+check "bitwarden/pull 参数缺失 400" '"code":400' "$(curl -s "${AUTH[@]}" "${JSON[@]}" -X POST -d '{"server":"","email":"","password":""}' "$B/api/v1/bitwarden/pull")"
 
 # 修改密码：旧密码失效 / 新密码可登录
 check "修改密码（revokedOthers）" '"revokedOthers"' "$(curl -s "${AUTH[@]}" "${JSON[@]}" -X POST -d '{"oldPassword":"smoke-pass-123","newPassword":"smoke-pass-456"}' "$B/api/v1/auth/password")"

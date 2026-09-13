@@ -1,15 +1,16 @@
-# VaultForge Server —— 秘钥仓配套云端（v0.3.0 · Web 管理面板版）
+# VaultForge Server —— 秘钥仓配套云端（v0.4.0 · Bitwarden 对接版）
 
-VaultForge 安卓端的配套服务端：**Web 管理面板 + 账号登录 + 条目同步 + 服务端化全部 App 能力**。
+VaultForge 安卓端的配套服务端：**Web 管理面板 + 账号登录 + 条目同步 + 服务端化全部 App 能力 + Bitwarden 对接**。
 
 - **Web 管理面板**：浏览器直接打开即用（单页应用，资源全内嵌、无外部 CDN 依赖），覆盖 App 全部功能——条目管理、探测巡检、SSH 终端、服务器指标、Docker 容器、远程文件管理、设置
 - **服务端专属功能**：仪表盘统计、会话管理、修改密码（吊销其他设备）、数据导出、批量操作
+- **Bitwarden / Vaultwarden 对接**：连接自建密码库，拉取并解密全部条目（PBKDF2 / Argon2id 双 KDF；主密码不落地）
 - **服务端全能力**：内置真 SSH 客户端（命令执行 / 指标采集 / Docker 管理 / SFTP 文件）、WebDAV 客户端、探测引擎（file / ssh / api + 演示代码执行）
 - **账号登录**：注册 / 登录签发会话令牌（PBKDF2-HMAC-SHA256 密码哈希，数据按账号隔离）
 - 响应契约与 App 本地接口完全一致：`{"code":0,"message":"ok","data":...}` + `Authorization: Bearer <会话令牌>`
 - 条目字段与 App 端 `VaultItem` 一一对应，天然支持端云同步
 
-> 依赖说明：v0.3.0 起引入 SSH / SFTP 能力，需要两个第三方依赖（`golang.org/x/crypto`、`github.com/pkg/sftp`），是服务端首次打破"纯标准库"。国内构建建议 `GOPROXY=https://goproxy.cn GOSUMDB=off`。
+> 依赖说明：v0.3.0 起引入 SSH / SFTP 能力，需要两个第三方依赖（`golang.org/x/crypto`、`github.com/pkg/sftp`），是服务端首次打破"纯标准库"。国内构建建议 `GOPROXY=https://goproxy.cn GOSUMDB=off`。v0.4.0 的 Bitwarden 对接复用 `golang.org/x/crypto`（PBKDF2 / Argon2id），无新增依赖。
 
 ## 架构
 
@@ -40,6 +41,7 @@ VaultForge 安卓端的配套服务端：**Web 管理面板 + 账号登录 + 条
 | 终端 | 服务器命令模式 + `docker exec` 容器模式；快捷指令；命令历史（↑/↓） |
 | 文件管理 | SSH(SFTP) / SFTP / WebDAV 条目的目录浏览、上传、下载、删除 |
 | 设置 | 图表样式 / 采样间隔偏好；修改密码；登录会话列表与吊销；数据导出；服务信息 |
+| Bitwarden 对接 | 连接 Bitwarden / Vaultwarden 拉取解密条目：搜索、密码打码 / 查看 / 复制；默认服务器预填自建实例 |
 
 面板偏好（图表样式 / 采样间隔）与 App 端设置镜像互通（`/api/v1/settings`）。
 
@@ -55,6 +57,7 @@ server/
 │   ├── store/              存储层：账号 / 会话 / 按用户隔离的保险库（JSON 原子写入，可换 DB）
 │   ├── sshx/               SSH 客户端：连接复用、命令执行、指标采集、Docker、SFTP
 │   ├── probe/              探测引擎：file / ssh / api + 演示代码（curl/python/js）执行器
+│   ├── bitwarden/          Bitwarden / Vaultwarden 客户端（PBKDF2 + Argon2id、EncString 解密、sync 拉取）
 │   └── api/
 │       ├── server.go       路由表（Go 1.22 ServeMux，方法 + 路径模式）
 │       ├── response.go     统一响应 {code, message, data}
@@ -73,10 +76,13 @@ server/
 │       ├── export.go       数据导出
 │       ├── settings.go     设置镜像读写
 │       ├── sync.go         增量同步 pull / push（LWW）
+│       ├── bitwarden.go    Bitwarden 对接：拉取并解密密码库条目
 │       ├── webfs.go        Web 面板静态资源（go:embed）
 │       └── static/         Web 面板前端（index.html + assets：纯原生 JS/CSS）
+├── cmd/
+│   └── bwprobe/            Bitwarden 协议端到端探针（注册 / 登录 / 解密 / sync / 建条目全链路自检）
 ├── scripts/
-│   ├── smoke.sh            冒烟测试（49 项：账号/同步/面板/条目动作全链路）
+│   ├── smoke.sh            冒烟测试（53 项：账号/同步/面板/条目动作/Bitwarden 接口全链路）
 │   ├── release.sh          发布打包（amd64/arm64 tarball + SHA256SUMS）
 │   └── sync-roundtrip.py   模拟 App 同步往返验证（登录或自动注册）
 ├── deploy/
@@ -148,6 +154,7 @@ curl -H "Authorization: Bearer <token>" http://127.0.0.1:8787/api/v1/stats
 | PUT | `/api/v1/settings` | Bearer | 合并设置镜像 | ✅ |
 | POST | `/api/v1/sync/pull` | Bearer | 增量拉取（since 游标） | ✅ |
 | POST | `/api/v1/sync/push` | Bearer | 批量推送（LWW 冲突检测） | ✅ |
+| POST | `/api/v1/bitwarden/pull` | Bearer | 连接 Bitwarden / Vaultwarden，拉取并解密密码库条目 | ✅ 新增 |
 | — | `/api/v1/devices` | — | 设备管理 | 🚧 路线图 |
 | — | `/api/v1/agent/*` | — | 远程探测任务队列 | 🚧 路线图 |
 
@@ -164,6 +171,7 @@ curl -H "Authorization: Bearer <token>" http://127.0.0.1:8787/api/v1/stats
 
 - **探测引擎**：与 App 语义一致——file（WebDAV / TCP 握手延迟）、ssh（TCP 握手 + 完整连接校验）、api（优先执行演示代码 curl/python/js，回退端点 HTTP 探测）；巡检结果写回条目（`lastOk / lastLatencyMs / lastCheckedAt / lastMessage`）并随同步下发
 - **SSH 连接复用**：按条目缓存连接，失效自动重建；条目配置变更 / 删除时自动清理缓存
+- **Bitwarden 对接**：完整协议链路——prelogin 取 KDF 参数 → 密钥派生 → 登录解密用户密钥 → `/sync` 全量拉取 → 逐条解密（名称 / 用户名 / 密码 / URI / 备注，含文件夹与账户资料）；支持 PBKDF2-SHA256 与 Argon2id；主密码仅参与本次请求的密钥派生，**不存储、不写日志**
 - **Docker 容器名**：白名单正则校验（`^[A-Za-z0-9_.\-]{1,80}$`）防注入；`docker exec` 经单引号转义
 - **远程文件**：SSH 条目走内置 SFTP；`file` 条目按协议分发（`sftp` / `webdav`）；WebDAV 支持 Basic 认证与自签名证书
 - **上传 / 下载上限**：请求体 16MB（面板文件管理同限）
@@ -204,11 +212,11 @@ curl -H "Authorization: Bearer <token>" http://127.0.0.1:8787/api/v1/stats
 ./scripts/release.sh
 # 产物 dist/：
 #   vaultforge-server-linux-amd64 / -arm64              裸二进制
-#   vaultforge-server-v0.3.0-linux-amd64.tar.gz          发布包（含 install.sh / systemd 单元 / README / smoke.sh / LICENSE）
+#   vaultforge-server-v0.4.0-linux-amd64.tar.gz          发布包（含 install.sh / systemd 单元 / README / smoke.sh / LICENSE）
 #   SHA256SUMS
 
 # 方式二：部署到云服务器（install.sh 会装到 /opt/vaultforge 并注册 systemd 服务）
-scp dist/vaultforge-server-v0.3.0-linux-amd64.tar.gz root@<server>:/tmp/
+scp dist/vaultforge-server-v0.4.0-linux-amd64.tar.gz root@<server>:/tmp/
 ssh root@<server> 'cd /tmp && tar xzf vaultforge-server-*.tar.gz && cd vaultforge-server-*/ && ./install.sh'
 ```
 
@@ -246,12 +254,12 @@ location / {
 - **SSH 主机指纹不做校验**（与 App 行为一致，`InsecureIgnoreHostKey`）；WebDAV 客户端信任自签名证书——均为方便用户管理自有机器的取舍，介意请勿使用
 - 上传 / 下载限 16MB；Docker 容器名白名单校验；批量操作上限 200 条 / 次
 - 注册策略：仅第一个账号自由注册；多用户需设置 `VF_ALLOW_REGISTER=1`
-- 升级说明：v0.1.0 / v0.2.0 数据自动兼容（首账号继承旧数据）
+- 升级说明：v0.1.0 / v0.2.0 / v0.3.0 数据自动兼容（首账号继承旧数据）
 
 ## 测试
 
 ```bash
-# 冒烟测试（49 项：账号/鉴权/同步/条目动作/面板静态资源/新接口）
+# 冒烟测试（53 项：账号/鉴权/同步/条目动作/面板静态资源/Bitwarden 接口）
 go build -o vaultforge-server . && ./scripts/smoke.sh
 
 # 端云同步往返（模拟 App 行为，支持已注册账号或自动注册）
@@ -263,9 +271,11 @@ python3 scripts/sync-roundtrip.py --base http://127.0.0.1:8787 --user admin --pa
 - [x] 账号体系：注册 / 登录 / 会话令牌（PBKDF2 密码哈希，数据按账号隔离）
 - [x] 基础限流（注册 5/min、登录 15/min）
 - [x] **Web 管理控制台（v0.3.0）**：覆盖 App 全部能力 + 服务端专属功能
+- [x] **Bitwarden / Vaultwarden 对接（v0.4.0）**：连接密码库拉取并解密条目（Web 面板 + API）
 - [x] 服务端化能力：SSH 终端 / 指标 / Docker / 文件管理 / 探测引擎
 - [ ] App 对接云端同步 UI（填地址 + 账号密码即可同步）
 - [ ] 2FA（TOTP）/ 登录失败锁定 / 审计日志
+- [ ] Bitwarden 写入支持（创建 / 更新 / 删除条目回写密码库）
 - [ ] E2EE：服务端只存密文（`encrypted_blob`）
 - [ ] 设备管理（列表 / 踢出 / 重命名）
 - [ ] Agent 任务队列（远程探测下发）
