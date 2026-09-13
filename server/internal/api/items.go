@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/03chuangling/vaultforge/server/internal/model"
+	"github.com/03chuangling/vaultforge/server/internal/sshx"
 	"github.com/03chuangling/vaultforge/server/internal/store"
 )
 
@@ -60,6 +61,7 @@ func (s *Server) handleItemPatch(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		fail(w, http.StatusInternalServerError, "更新失败: "+err.Error())
 	default:
+		sshx.Close(r.PathValue("id")) // 配置变更后丢弃旧 SSH 连接缓存
 		okMsg(w, "updated", item)
 	}
 }
@@ -75,6 +77,7 @@ func (s *Server) handleItemDelete(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusInternalServerError, "删除失败: "+err.Error())
 		return
 	}
+	sshx.Close(id) // 删除后清理连接缓存
 	okMsg(w, "deleted", nil)
 }
 

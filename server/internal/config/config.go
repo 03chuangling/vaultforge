@@ -6,7 +6,7 @@ import (
 )
 
 // Version 服务端版本（与 App 版本解耦，单独演进）。
-const Version = "0.2.0"
+const Version = "0.3.0"
 
 // Config 运行配置：全部来自环境变量，便于服务器 / 容器部署。
 type Config struct {

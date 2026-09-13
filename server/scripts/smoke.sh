@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# VaultForge 服务端冒烟测试（v0.2.0 账号登录版）：
-# 临时目录启动实例，验证注册 / 登录 / 鉴权 + 核心接口与同步链路。
+# VaultForge 服务端冒烟测试（v0.3.0 Web 面板版）：
+# 临时目录启动实例，验证注册 / 登录 / 鉴权 / 同步 / 条目动作 / Web 面板静态资源
+# 与 v0.3.0 新增接口（stats / export / sessions / password / batch / check）。
 # 用法：cd server && go build -o vaultforge-server . && ./scripts/smoke.sh [port]
 set -u
 
@@ -34,6 +35,8 @@ check() { # check <描述> <期望子串> <实际输出>
 }
 
 JSON=(-H "Content-Type: application/json")
+
+# ============ v0.2.0：账号 / 鉴权 / 同步 ============
 
 check "healthz 健康检查" '"code":0' "$(curl -s "$B/healthz")"
 check "服务信息（公开）" '"auth":"account"' "$(curl -s "$B/api/v1")"
@@ -84,6 +87,54 @@ check "设置读取" '"chartStyle":"ring"' "$(curl -s "${AUTH[@]}" "$B/api/v1/se
 check "删除条目（deleted）" '"message":"deleted"' "$(curl -s "${AUTH[@]}" -X DELETE "$B/api/v1/items/$ID")"
 check "删除后详情 404" '"code":404' "$(curl -s "${AUTH[@]}" "$B/api/v1/items/$ID")"
 check "删除进入墓碑" "\"$ID\"" "$(curl -s "${AUTH[@]}" "${JSON[@]}" -X POST -d '{"deviceId":"smoke","since":0}' "$B/api/v1/sync/pull")"
+
+# ============ v0.3.0：Web 面板 + 服务端专属功能 ============
+
+check "Web 面板首页（HTML）" 'VaultForge Console' "$(curl -s "$B/")"
+check "静态资源 app.js" 'window.App' "$(curl -s "$B/assets/app.js")"
+check "静态资源 app.css" 'color-scheme: dark' "$(curl -s "$B/assets/app.css")"
+check "未知路径 JSON 404" '"code":404' "$(curl -s "$B/nope")"
+
+check "仪表盘统计（stats）" '"uptimeMs"' "$(curl -s "${AUTH[@]}" "$B/api/v1/stats")"
+check "会话列表（sessions）" '"sessions"' "$(curl -s "${AUTH[@]}" "$B/api/v1/auth/sessions")"
+check "会话列表含当前标记" '"current":true' "$(curl -s "${AUTH[@]}" "$B/api/v1/auth/sessions")"
+check "数据导出（export）" '"exportedAt"' "$(curl -s "${AUTH[@]}" "$B/api/v1/export")"
+
+# 批量操作：新建两条 → 打标签 → 按标签筛选 → 批量巡检
+C1="$(curl -s "${AUTH[@]}" "${JSON[@]}" -X POST -d '{"type":"api","name":"web-a1","endpoint":"https://127.0.0.1:1/"}' "$B/api/v1/items")"
+ID1="$(printf '%s' "$C1" | python3 -c 'import json,sys;print(json.load(sys.stdin)["data"]["id"])')"
+C2="$(curl -s "${AUTH[@]}" "${JSON[@]}" -X POST -d '{"type":"api","name":"web-a2","endpoint":"https://127.0.0.1:1/"}' "$B/api/v1/items")"
+ID2="$(printf '%s' "$C2" | python3 -c 'import json,sys;print(json.load(sys.stdin)["data"]["id"])')"
+check "批量打标签（affected=2）" '"affected":2' "$(curl -s "${AUTH[@]}" "${JSON[@]}" -X POST -d "{\"action\":\"tag\",\"ids\":[\"$ID1\",\"$ID2\"],\"tags\":[\"webtag\"]}" "$B/api/v1/items/batch")"
+check "按标签筛选命中" '"web-a1"' "$(curl -s "${AUTH[@]}" "$B/api/v1/items?tag=webtag")"
+check "批量巡检（结果数组）" '"results"' "$(curl -s "${AUTH[@]}" "${JSON[@]}" -X POST -d "{\"action\":\"check\",\"ids\":[\"$ID1\",\"$ID2\"]}" "$B/api/v1/items/batch")"
+
+# 单条检测（写入探测结果）
+check "单条检测（result）" '"latencyMs"' "$(curl -s "${AUTH[@]}" -X POST "$B/api/v1/items/$ID1/check")"
+check "探测结果已写回" '"lastCheckedAt"' "$(curl -s "${AUTH[@]}" "$B/api/v1/items/$ID1")"
+
+# SSH / 文件动作在非对应类型上被拒
+check "非 SSH 执行命令被拒" '"code":400' "$(curl -s "${AUTH[@]}" "${JSON[@]}" -X POST -d '{"command":"id"}' "$B/api/v1/items/$ID1/exec")"
+check "非 SSH 读取指标被拒" '"code":400' "$(curl -s "${AUTH[@]}" "$B/api/v1/items/$ID1/metrics")"
+check "非 SSH 读取容器被拒" '"code":400' "$(curl -s "${AUTH[@]}" "$B/api/v1/items/$ID1/docker")"
+check "非文件条目浏览被拒" '"code":400' "$(curl -s "${AUTH[@]}" "$B/api/v1/items/$ID1/files")"
+
+# SSH 条目（端口 1 不可达）：指标 / 容器优雅失败，命令执行 502
+S1="$(curl -s "${AUTH[@]}" "${JSON[@]}" -X POST -d '{"type":"ssh","name":"web-ssh","host":"127.0.0.1","port":1,"username":"root","authMethod":"password","secret":"x"}' "$B/api/v1/items")"
+SID="$(printf '%s' "$S1" | python3 -c 'import json,sys;print(json.load(sys.stdin)["data"]["id"])')"
+check "SSH 指标（优雅失败）" '"ok":false' "$(curl -s "${AUTH[@]}" "$B/api/v1/items/$SID/metrics")"
+check "SSH 容器列表（优雅失败）" '"ok":false' "$(curl -s "${AUTH[@]}" "$B/api/v1/items/$SID/docker")"
+check "SSH 执行命令（连接失败 502）" '"code":502' "$(curl -s "${AUTH[@]}" "${JSON[@]}" -X POST -d '{"command":"id"}' "$B/api/v1/items/$SID/exec")"
+
+# 当前会话不可吊销
+CURID="$(curl -s "${AUTH[@]}" "$B/api/v1/auth/sessions" | python3 -c 'import json,sys; s=json.load(sys.stdin)["data"]["sessions"]; print([x["id"] for x in s if x["current"]][0])')"
+check "吊销当前会话被拒" '"code":400' "$(curl -s "${AUTH[@]}" -X DELETE "$B/api/v1/auth/sessions/$CURID")"
+
+# 修改密码：旧密码失效 / 新密码可登录
+check "修改密码（revokedOthers）" '"revokedOthers"' "$(curl -s "${AUTH[@]}" "${JSON[@]}" -X POST -d '{"oldPassword":"smoke-pass-123","newPassword":"smoke-pass-456"}' "$B/api/v1/auth/password")"
+check "旧密码登录被拒" '"code":401' "$(curl -s "${JSON[@]}" -X POST -d '{"username":"smoke","password":"smoke-pass-123"}' "$B/api/v1/auth/login")"
+LOGIN3="$(curl -s "${JSON[@]}" -X POST -d '{"username":"smoke","password":"smoke-pass-456"}' "$B/api/v1/auth/login")"
+check "新密码登录成功" '"token":"vfs_' "$LOGIN3"
 
 echo "=============================="
 echo "PASS=$PASS FAIL=$FAIL"

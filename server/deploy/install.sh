@@ -2,7 +2,7 @@
 # VaultForge Server 一键安装脚本（systemd，需 root）。
 #
 # 用法：
-#   1) 上传发布包：scp vaultforge-server-v0.2.0-linux-amd64.tar.gz root@<server>:/tmp/
+#   1) 上传发布包：scp vaultforge-server-v0.3.0-linux-amd64.tar.gz root@<server>:/tmp/
 #   2) 解压并安装：
 #      cd /tmp && tar xzf vaultforge-server-*.tar.gz
 #      cd vaultforge-server-*/ && sudo ./install.sh

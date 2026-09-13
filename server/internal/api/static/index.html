@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>VaultForge Console · 秘钥仓</title>
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+<header id="topbar">
+  <a class="brand" href="#/dash">
+    <span class="logo">◆</span>
+    <span class="title">VaultForge</span>
+    <span class="ver" id="ver-text">Console</span>
+  </a>
+  <nav id="nav">
+    <a href="#/dash" data-nav="dash">仪表盘</a>
+    <a href="#/items" data-nav="items">条目</a>
+    <a href="#/settings" data-nav="settings">设置</a>
+  </nav>
+  <div class="userbox" id="userbox"></div>
+</header>
+<main class="main" id="main">
+  <div class="loading">载入中…</div>
+</main>
+<div id="toasts"></div>
+<div id="modal-root"></div>
+<script src="/assets/api.js"></script>
+<script src="/assets/ui.js"></script>
+<script src="/assets/views_a.js"></script>
+<script src="/assets/views_b.js"></script>
+<script src="/assets/app.js"></script>
+</body>
+</html>

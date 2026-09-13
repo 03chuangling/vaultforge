@@ -551,6 +551,129 @@ func (s *Store) MergeSettings(userID string, patch map[string]any) (map[string]a
 	return out, nil
 }
 
+// ---- 账号安全 ----
+
+// ChangePassword 更新账号密码（盐 / 哈希 / 迭代次数）。
+func (s *Store) ChangePassword(userID, salt, hash string, iterations int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a := s.file.Accounts[userID]
+	if a == nil {
+		return ErrNotFound
+	}
+	a.Salt = salt
+	a.PasswordHash = hash
+	a.Iterations = iterations
+	return s.saveLocked()
+}
+
+// ---- 会话管理 ----
+
+// SessionEntry 会话的对外描述（不含完整令牌哈希）。
+type SessionEntry struct {
+	ID        string `json:"id"` // 令牌哈希前 12 位
+	CreatedAt int64  `json:"createdAt"`
+	ExpiresAt int64  `json:"expiresAt"`
+}
+
+// ListSessions 返回该用户全部未过期会话（按创建时间倒序）。
+func (s *Store) ListSessions(userID string) []SessionEntry {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	now := nowMs()
+	out := []SessionEntry{}
+	for h, sess := range s.file.Sessions {
+		if sess == nil || sess.UserID != userID || sess.ExpiresAt <= now {
+			continue
+		}
+		id := h
+		if len(id) > 12 {
+			id = id[:12]
+		}
+		out = append(out, SessionEntry{ID: id, CreatedAt: sess.CreatedAt, ExpiresAt: sess.ExpiresAt})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt > out[j].CreatedAt })
+	return out
+}
+
+// RevokeSession 按会话 id（令牌哈希前 12 位）吊销该用户名下的会话。
+func (s *Store) RevokeSession(userID, sessionID string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for h, sess := range s.file.Sessions {
+		if sess == nil || sess.UserID != userID {
+			continue
+		}
+		id := h
+		if len(id) > 12 {
+			id = id[:12]
+		}
+		if id == sessionID {
+			delete(s.file.Sessions, h)
+			_ = s.saveLocked()
+			return true
+		}
+	}
+	return false
+}
+
+// CountAccounts 账号总数。
+func (s *Store) CountAccounts() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.file.Accounts)
+}
+
+// CountSessions 未过期会话总数。
+func (s *Store) CountSessions() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	now := nowMs()
+	n := 0
+	for _, sess := range s.file.Sessions {
+		if sess != nil && sess.ExpiresAt > now {
+			n++
+		}
+	}
+	return n
+}
+
+// FileSize 数据文件字节大小（不存在返回 0）。
+func (s *Store) FileSize() int64 {
+	fi, err := os.Stat(s.path)
+	if err != nil {
+		return 0
+	}
+	return fi.Size()
+}
+
+// ---- 探测结果 ----
+
+// SetProbeResult 写入探测结果（lastOk / lastLatencyMs / lastCheckedAt / lastMessage）。
+func (s *Store) SetProbeResult(userID, id string, okv bool, latencyMs int64, message string) (*model.VaultItem, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	v := s.file.Vaults[userID]
+	if v == nil {
+		return nil, ErrNotFound
+	}
+	it := findItemLocked(v, id)
+	if it == nil || it.Deleted {
+		return nil, ErrNotFound
+	}
+	okCopy := okv
+	now := nowMs()
+	it.LastOk = &okCopy
+	it.LastLatencyMs = latencyMs
+	it.LastCheckedAt = now
+	it.LastMessage = message
+	it.UpdatedAt = now
+	if err := s.saveLocked(); err != nil {
+		return nil, err
+	}
+	return clone(it), nil
+}
+
 // ---- 工具 ----
 
 // NewID 生成 UUID v4 字符串（与 App 端条目 id 格式一致）。

@@ -120,3 +120,79 @@ type AuthData struct {
 	Token     string    `json:"token"`
 	ExpiresAt int64     `json:"expiresAt"`
 }
+
+// ---- Web 管理面板（v0.3.0）契约 ----
+
+// ExecRequest SSH 命令执行请求（container 为空时在服务器执行，否则 docker exec）。
+type ExecRequest struct {
+	Command   string `json:"command"`
+	Container string `json:"container"`
+}
+
+// DockerActionRequest Docker 容器操作请求。
+type DockerActionRequest struct {
+	Container string `json:"container"`
+	Action    string `json:"action"` // start | stop | restart | logs
+}
+
+// DockerContainerInfo 容器信息。
+type DockerContainerInfo struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Status string `json:"status"`
+	Image  string `json:"image"`
+}
+
+// FileEntry 远程文件条目。
+type FileEntry struct {
+	Name       string `json:"name"`
+	Path       string `json:"path"`
+	IsDir      bool   `json:"isDir"`
+	Size       int64  `json:"size"`
+	ModifiedAt int64  `json:"modifiedAt"`
+}
+
+// FileDeleteRequest 删除远程文件 / 文件夹请求。
+type FileDeleteRequest struct {
+	Path  string `json:"path"`
+	IsDir bool   `json:"isDir"`
+}
+
+// BatchRequest 条目批量操作请求。
+type BatchRequest struct {
+	Action string   `json:"action"` // delete | tag | untag
+	IDs    []string `json:"ids"`
+	Tags   []string `json:"tags"`
+}
+
+// PasswordChangeRequest 修改密码请求。
+type PasswordChangeRequest struct {
+	OldPassword string `json:"oldPassword"`
+	NewPassword string `json:"newPassword"`
+}
+
+// SessionInfo 会话概要（对外）。
+type SessionInfo struct {
+	ID        string `json:"id"`
+	Current   bool   `json:"current"`
+	CreatedAt int64  `json:"createdAt"`
+	ExpiresAt int64  `json:"expiresAt"`
+}
+
+// MetricsData SSH 服务器指标快照（字段与 App 端 SshMetrics 对齐）。
+type MetricsData struct {
+	Ok              bool    `json:"ok"`
+	Error           string  `json:"error,omitempty"`
+	CPUPercent      float64 `json:"cpuPercent"`
+	MemUsedPercent  float64 `json:"memUsedPercent"`
+	MemUsedMb       int64   `json:"memUsedMb"`
+	MemTotalMb      int64   `json:"memTotalMb"`
+	NetRxKbps       float64 `json:"netRxKbps"`
+	NetTxKbps       float64 `json:"netTxKbps"`
+	DiskUsedPercent float64 `json:"diskUsedPercent"`
+	DiskReadKbps    float64 `json:"diskReadKbps"`
+	DiskWriteKbps   float64 `json:"diskWriteKbps"`
+	Load1           string  `json:"load1,omitempty"`
+	Kernel          string  `json:"kernel,omitempty"`
+	FetchedAt       int64   `json:"fetchedAt"`
+}
