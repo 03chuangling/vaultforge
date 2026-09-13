@@ -19,9 +19,13 @@ func (s *Server) authed(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// withLogging 输出访问日志。
+// maxBodyBytes 请求体大小上限（16MB，防止超大报文打爆内存）。
+const maxBodyBytes = 16 << 20
+
+// withLogging 输出访问日志，并限制请求体大小。
 func withLogging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)

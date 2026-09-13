@@ -1,6 +1,6 @@
 BINARY := vaultforge-server
 
-.PHONY: build run cross clean
+.PHONY: build run cross release clean
 
 build:
 	go build -o $(BINARY) .
@@ -12,6 +12,10 @@ run: build
 cross:
 	mkdir -p dist
 	GOOS=linux GOARCH=amd64 go build -o dist/$(BINARY)-linux-amd64 .
+
+# 构建发布包（amd64 + arm64 tarball + SHA256SUMS）
+release:
+	./scripts/release.sh
 
 clean:
 	rm -rf $(BINARY) dist

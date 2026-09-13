@@ -1,4 +1,4 @@
-# VaultForge Server —— 秘钥仓配套云端（骨架版 v0.2.0）
+# VaultForge Server —— 秘钥仓配套云端（第一版 v0.1.0）
 
 VaultForge 安卓端的配套服务端：提供**条目同步 + 设置镜像 + 统一契约**，为后续多设备、远程能力打底。
 
@@ -35,8 +35,14 @@ server/
 │       ├── items.go        条目 CRUD（对齐 App 本地接口语义）
 │       ├── settings.go     设置镜像读写
 │       └── sync.go         增量同步 pull / push（LWW）
-├── scripts/smoke.sh        冒烟测试（启动临时实例跑全链路）
-└── Makefile                build / run / cross / clean
+├── scripts/
+│   ├── smoke.sh            冒烟测试（启动临时实例跑全链路）
+│   ├── release.sh          发布打包（amd64/arm64 tarball + SHA256SUMS）
+│   └── sync-roundtrip.py   模拟 App 同步往返验证
+├── deploy/
+│   ├── install.sh          服务器一键安装（systemd）
+│   └── vaultforge-server.service
+└── Makefile                build / run / cross / release / clean
 ```
 
 ## 快速开始
@@ -74,7 +80,7 @@ curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8787/api/v1/items
 | — | `/api/v1/devices` | — | 设备管理 | 🚧 路线图 |
 | — | `/api/v1/agent/*` | — | 远程探测任务队列 | 🚧 路线图 |
 
-## 同步模型（骨架版）
+## 同步模型（v0.1.0）
 
 ```jsonc
 // pull 请求 → 响应
@@ -134,9 +140,26 @@ nginx 反代（生产必须加 TLS）：
 location /api/ { proxy_pass http://127.0.0.1:8787; }
 ```
 
+## 发布打包（v0.1.0）
+
+```bash
+./scripts/release.sh        # 产出 dist/：
+#   vaultforge-server-linux-amd64                  裸二进制
+#   vaultforge-server-v0.1.0-linux-amd64.tar.gz    发布包（含 install.sh / systemd 单元 / README / smoke.sh / LICENSE）
+#   vaultforge-server-linux-arm64 / ...-arm64.tar.gz
+#   SHA256SUMS
+```
+
+部署到云服务器（install.sh 会装到 /opt/vaultforge 并注册 systemd 服务，默认监听 127.0.0.1:8787）：
+
+```bash
+scp dist/vaultforge-server-v0.1.0-linux-amd64.tar.gz root@<server>:/tmp/
+ssh root@<server> 'cd /tmp && tar xzf vaultforge-server-*.tar.gz && cd vaultforge-server-*/ && ./install.sh'
+```
+
 ## 安全说明（重要）
 
-- 骨架版为**静态令牌 + HTTP**：公网部署前必须加 TLS 反代（nginx/caddy）
+- v0.1.0 为**静态令牌 + HTTP**：公网部署前必须加 TLS 反代（nginx/caddy）
 - 数据当前**明文落盘**（条目中含 secret/privateKey 等敏感字段）：端到端加密（E2EE）已列入路线图，正式上线前建议仅在自托管内网使用
 - 令牌文件 `data/token.txt`（0600）请勿提交 / 泄露
 

@@ -1,0 +1,17 @@
+[Unit]
+Description=VaultForge Server（秘钥仓配套云端）
+Documentation=https://github.com/03chuangling/vaultforge
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/vaultforge
+ExecStart=/opt/vaultforge/vaultforge-server
+Environment=VF_ADDR=127.0.0.1:8787
+Environment=VF_DATA_DIR=/opt/vaultforge/data
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
