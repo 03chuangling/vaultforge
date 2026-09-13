@@ -50,7 +50,7 @@ object SshClient {
 
     private const val SNAPSHOT_CMD =
         "cat /proc/stat; echo '@@@'; cat /proc/net/dev; echo '@@@'; cat /proc/diskstats; " +
-            "echo '@@@'; sleep 1; cat /proc/stat; echo '@@@'; cat /proc/net/dev; echo '@@@'; " +
+            "echo '@@@'; sleep 0.12; cat /proc/stat; echo '@@@'; cat /proc/net/dev; echo '@@@'; " +
             "cat /proc/diskstats; echo '@@@'; cat /proc/meminfo; echo '@@@'; df -k / 2>/dev/null; " +
             "echo '@@@'; cat /proc/loadavg 2>/dev/null; echo '@@@'; uname -srm 2>/dev/null"
 
@@ -75,8 +75,40 @@ object SshClient {
         config["PreferredAuthentications"] = "password,keyboard-interactive,publickey"
         session.setConfig(config)
         session.timeout = timeoutMs
+        session.setServerAliveInterval(15000)
+        session.setServerAliveCountMax(4)
         session.connect(timeoutMs)
         return session
+    }
+
+    // ===== 会话复用（高频指标采样用）：登录一次，后续命令复用同一连接 =====
+    @Volatile
+    private var cachedSession: Session? = null
+    @Volatile
+    private var cachedKey: String = ""
+    private val sessionLock = Any()
+    private fun keyOf(item: VaultItem): String =
+        item.host + "|" + item.port + "|" + item.username + "|" + item.authMethod + "|" + item.secret.hashCode()
+    private fun acquireSession(item: VaultItem): Session {
+        val key = keyOf(item)
+        val cur = cachedSession
+        if (cur != null && cur.isConnected && cachedKey == key) return cur
+        synchronized(sessionLock) {
+            val again = cachedSession
+            if (again != null && again.isConnected && cachedKey == key) return again
+            runCatching { cachedSession?.disconnect() }
+            val fresh = openSession(item)
+            cachedSession = fresh
+            cachedKey = key
+            return fresh
+        }
+    }
+    private fun dropSession() {
+        synchronized(sessionLock) {
+            runCatching { cachedSession?.disconnect() }
+            cachedSession = null
+            cachedKey = ""
+        }
     }
 
     suspend fun probe(item: VaultItem): ProbeResult = withContext(Dispatchers.IO) {
@@ -103,15 +135,20 @@ object SshClient {
     }
 
     suspend fun fetchMetrics(item: VaultItem): SshMetrics = withContext(Dispatchers.IO) {
-        var session: Session? = null
+        // 复用会话采样：失败时清理缓存并重建重试一次
         try {
-            session = openSession(item)
+            val session = acquireSession(item)
             val raw = exec(session, SNAPSHOT_CMD, 20000)
             parseMetrics(raw)
         } catch (e: Exception) {
-            SshMetrics(error = friendly(e))
-        } finally {
-            runCatching { session?.disconnect() }
+            dropSession()
+            try {
+                val session = acquireSession(item)
+                val raw = exec(session, SNAPSHOT_CMD, 20000)
+                parseMetrics(raw)
+            } catch (e2: Exception) {
+                SshMetrics(error = friendly(e2))
+            }
         }
     }
 
