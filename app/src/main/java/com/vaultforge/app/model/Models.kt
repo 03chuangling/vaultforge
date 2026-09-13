@@ -33,6 +33,9 @@ data class VaultItem(
     val lastLatencyMs: Long = -1L,
     val lastCheckedAt: Long = 0L,
     val lastMessage: String = "",
+
+    // 删除墓碑（仅云端同步使用；本地正常条目恒为 false）
+    val deleted: Boolean = false,
 ) {
     val status: ItemStatus
         get() = when {

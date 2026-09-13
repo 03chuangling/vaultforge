@@ -24,12 +24,20 @@ data class VaultSettings(
     val token: String = "",
     val chartStyle: String = "ring", // ring=环形样式 | plot=坐标图（折线）样式
     val sampleSec: Float = 5f, // 坐标图采样间隔（秒，支持小数如 0.1）
+
+    // ---- 云端同步（v0.2.0）----
+    val cloudUrl: String = "",
+    val cloudUser: String = "",
+    val cloudToken: String = "",
+    val cloudDeviceId: String = "",
+    val lastSyncAt: Long = 0L,
 )
 
 @Serializable
 private data class VaultSnapshot(
     val items: List<VaultItem> = emptyList(),
     val settings: VaultSettings = VaultSettings(),
+    val pendingDeletes: List<String> = emptyList(),
 )
 
 class VaultStore(context: Context) {
@@ -50,6 +58,8 @@ class VaultStore(context: Context) {
     private val _settings = MutableStateFlow(VaultSettings())
     val settings: StateFlow<VaultSettings> = _settings.asStateFlow()
 
+    private val _pendingDeletes = MutableStateFlow<List<String>>(emptyList())
+
     fun load() {
         scope.launch {
             val text = runCatching { if (file.exists()) file.readText() else "" }.getOrDefault("")
@@ -65,6 +75,7 @@ class VaultStore(context: Context) {
             }
             _items.value = snapshot.items
             _settings.value = settings
+            _pendingDeletes.value = snapshot.pendingDeletes
             snapshotNow()
         }
     }
@@ -85,6 +96,8 @@ class VaultStore(context: Context) {
     }
 
     fun delete(id: String) {
+        if (_items.value.none { it.id == id }) return
+        _pendingDeletes.value = (_pendingDeletes.value + id).distinct()
         _items.value = _items.value.filterNot { it.id == id }
         snapshotNow()
     }
@@ -115,11 +128,44 @@ class VaultStore(context: Context) {
 
     fun newId(): String = UUID.randomUUID().toString()
 
+    // ---- 云端同步辅助（v0.2.0）----
+
+    /** 待同步到云端的本地删除队列。 */
+    fun pendingDeletes(): List<String> = _pendingDeletes.value
+
+    /** 从删除队列移除已处理项。 */
+    fun clearPendingDeletes(ids: List<String>) {
+        val set = ids.toSet()
+        _pendingDeletes.value = _pendingDeletes.value.filterNot { it in set }
+        snapshotNow()
+    }
+
+    /** 云端写入（保留原始时间戳，不记删除队列）。 */
+    fun putRemote(item: VaultItem) {
+        val list = _items.value.toMutableList()
+        val idx = list.indexOfFirst { it.id == item.id }
+        if (idx >= 0) list[idx] = item else list.add(0, item)
+        _items.value = list
+        snapshotNow()
+    }
+
+    /** 静默移除（应用云端删除标记，不记删除队列）。 */
+    fun removeSilent(id: String) {
+        _items.value = _items.value.filterNot { it.id == id }
+        snapshotNow()
+    }
+
+    /** 推进云端同步游标。 */
+    fun setLastSyncAt(ts: Long) {
+        _settings.value = _settings.value.copy(lastSyncAt = ts)
+        snapshotNow()
+    }
+
     private fun snapshotNow() {
         scope.launch {
             mutex.withLock {
                 runCatching {
-                    val snap = VaultSnapshot(_items.value, _settings.value)
+                    val snap = VaultSnapshot(_items.value, _settings.value, _pendingDeletes.value)
                     file.writeText(json.encodeToString(VaultSnapshot.serializer(), snap))
                 }
             }

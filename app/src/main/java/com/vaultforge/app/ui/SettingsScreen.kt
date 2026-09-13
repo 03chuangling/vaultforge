@@ -3,6 +3,7 @@ package com.vaultforge.app.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +29,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,10 +37,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vaultforge.app.VaultApp
+import com.vaultforge.app.sync.SyncEngine
+import com.vaultforge.app.sync.SyncPhase
+import kotlinx.coroutines.launch
 
 @Composable
 fun SettingsScreen(onBack: () -> Unit) {
@@ -129,6 +136,11 @@ fun SettingsScreen(onBack: () -> Unit) {
         }
 
         Spacer(Modifier.height(18.dp))
+        SectionTitle("云端同步")
+        Spacer(Modifier.height(6.dp))
+        CloudSyncSection()
+
+        Spacer(Modifier.height(18.dp))
         SectionTitle("本地 API")
         Spacer(Modifier.height(6.dp))
         Column(
@@ -160,7 +172,7 @@ fun SettingsScreen(onBack: () -> Unit) {
         Spacer(Modifier.height(18.dp))
         SectionTitle("关于")
         Spacer(Modifier.height(6.dp))
-        Text("秘钥仓 VaultForge v0.1.0", fontSize = 13.sp, color = Text2)
+        Text("秘钥仓 VaultForge v0.2.0", fontSize = 13.sp, color = Text2)
         Text("本地密钥管理 · SSH / Docker 运维小工具", fontSize = 11.sp, color = Text3)
 
         Spacer(Modifier.height(40.dp))
@@ -206,5 +218,134 @@ private fun StyleOption(
             Text(title, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Text1)
             Text(desc, fontSize = 11.sp, color = Text3)
         }
+    }
+}
+
+@Composable
+private fun CloudSyncSection() {
+    val store = VaultApp.store
+    val settings by store.settings.collectAsState()
+    val syncState by SyncEngine.state.collectAsState()
+    val scope = rememberCoroutineScope()
+
+    var urlInput by remember(settings.cloudUrl) { mutableStateOf(settings.cloudUrl) }
+    var userInput by remember(settings.cloudUser) { mutableStateOf(settings.cloudUser) }
+    var passInput by remember { mutableStateOf("") }
+
+    val busy = syncState.phase == SyncPhase.RUNNING
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(CardBg)
+            .padding(14.dp)
+    ) {
+        Text("把本地条目同步到云端（VaultForge Server），多设备共享同一份数据。", fontSize = 11.sp, color = Text3)
+        Spacer(Modifier.height(10.dp))
+
+        OutlinedTextField(
+            value = urlInput,
+            onValueChange = { urlInput = it },
+            label = { Text("服务器地址") },
+            placeholder = { Text("https://vf.bdshjgg.com") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            enabled = !busy,
+        )
+
+        if (settings.cloudToken.isBlank()) {
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = userInput,
+                onValueChange = { userInput = it },
+                label = { Text("账号") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                enabled = !busy,
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = passInput,
+                onValueChange = { passInput = it },
+                label = { Text("密码") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                enabled = !busy,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            )
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CloudAction(
+                    text = "登录",
+                    enabled = !busy && urlInput.isNotBlank() && userInput.isNotBlank() && passInput.isNotBlank(),
+                ) { scope.launch { SyncEngine.login(store, urlInput, userInput, passInput) } }
+                CloudAction(
+                    text = "注册",
+                    subtle = true,
+                    enabled = !busy && urlInput.isNotBlank() && userInput.isNotBlank() && passInput.isNotBlank(),
+                ) { scope.launch { SyncEngine.register(store, urlInput, userInput, passInput) } }
+            }
+        } else {
+            Spacer(Modifier.height(10.dp))
+            Text("已登录：" + settings.cloudUser, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Text1)
+            Spacer(Modifier.height(2.dp))
+            Text(
+                "上次同步：" + if (settings.lastSyncAt > 0) friendlyTime(settings.lastSyncAt) else "尚未同步",
+                fontSize = 11.sp,
+                color = Text3,
+            )
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CloudAction(text = "立即同步", enabled = !busy) {
+                    scope.launch { SyncEngine.syncNow(store) }
+                }
+                CloudAction(text = "退出账号", subtle = true, enabled = !busy) {
+                    scope.launch { SyncEngine.logout(store) }
+                }
+            }
+        }
+
+        if (syncState.message.isNotBlank()) {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                syncState.message,
+                fontSize = 11.sp,
+                color = when (syncState.phase) {
+                    SyncPhase.ERROR -> StatusDown
+                    SyncPhase.SUCCESS -> StatusUp
+                    else -> Text2
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun CloudAction(
+    text: String,
+    enabled: Boolean = true,
+    subtle: Boolean = false,
+    onClick: () -> Unit,
+) {
+    val bg = when {
+        !enabled -> LineColor
+        subtle -> BrandSoft
+        else -> Brand
+    }
+    val fg = when {
+        !enabled -> Text3
+        subtle -> Brand
+        else -> Color.White
+    }
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(bg)
+            .clickable(enabled = enabled) { onClick() }
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+    ) {
+        Text(text, color = fg, fontSize = 13.sp)
     }
 }
