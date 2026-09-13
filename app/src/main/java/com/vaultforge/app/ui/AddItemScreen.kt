@@ -28,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -249,7 +250,8 @@ fun AddItemScreen(onBack: () -> Unit, onSaved: () -> Unit) {
         Box(
             Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(10.dp))
+                .shadow(elevation = 3.dp, shape = RoundedCornerShape(12.dp), ambientColor = Color(0x262F5D62), spotColor = Color(0x262F5D62))
+                .clip(RoundedCornerShape(12.dp))
                 .background(Brand)
                 .clickable { save() }
                 .padding(vertical = 14.dp),

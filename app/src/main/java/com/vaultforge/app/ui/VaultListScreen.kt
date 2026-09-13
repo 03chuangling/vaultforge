@@ -24,6 +24,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -237,6 +239,8 @@ private fun ListHeader(
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(6.dp).clip(RoundedCornerShape(999.dp)).background(StatusUp))
+            Spacer(Modifier.width(5.dp))
             Text("接口 127.0.0.1:$port", fontSize = 12.sp, color = Text2)
             Spacer(Modifier.width(10.dp))
             Text(
@@ -284,19 +288,20 @@ private fun VaultCard(item: VaultItem, onClick: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 5.dp)
-            .clip(RoundedCornerShape(14.dp))
+            .padding(horizontal = 14.dp, vertical = 6.dp)
+            .shadow(elevation = 3.dp, shape = RoundedCornerShape(18.dp), ambientColor = Color(0x262F5D62), spotColor = Color(0x262F5D62))
+            .clip(RoundedCornerShape(18.dp))
             .background(CardBg)
-            .border(1.dp, LineColor, RoundedCornerShape(14.dp))
+            .border(1.dp, LineColor.copy(alpha = 0.8f), RoundedCornerShape(18.dp))
             .clickable { onClick() }
             .height(IntrinsicSize.Min),
     ) {
         Box(
             Modifier
-                .width(3.dp)
+                .width(4.dp)
                 .fillMaxHeight()
                 .padding(vertical = 12.dp)
-                .background(Brand.copy(alpha = 0.6f), RoundedCornerShape(3.dp))
+                .background(Brush.verticalGradient(listOf(Brand, Brand.copy(alpha = 0.25f))), RoundedCornerShape(4.dp))
         )
         Column(
             Modifier
@@ -338,7 +343,7 @@ private fun VaultCard(item: VaultItem, onClick: () -> Unit) {
             DividerLine()
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(statusText(item), fontSize = 12.sp, color = statusColor(item.status))
+                Text(statusText(item), fontSize = 12.sp, color = statusColor(item.status), style = TextStyle(fontFeatureSettings = "tnum"))
                 Spacer(Modifier.weight(1f))
                 Text("管理 ›", fontSize = 12.sp, color = Brand, fontWeight = FontWeight.Medium)
             }

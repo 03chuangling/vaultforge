@@ -45,7 +45,7 @@ fun SettingsScreen(onBack: () -> Unit) {
     val store = VaultApp.store
     val settings by store.settings.collectAsState()
     val clipboard = LocalClipboardManager.current
-    var sampleInput by remember { mutableStateOf(settings.sampleSec.toString()) }
+    var sampleInput by remember { mutableStateOf(fmtSec(settings.sampleSec)) }
     Column(
         Modifier
             .fillMaxSize()
@@ -82,21 +82,21 @@ fun SettingsScreen(onBack: () -> Unit) {
             Spacer(Modifier.height(8.dp))
             StyleOption(
                 title = "坐标图样式",
-                desc = "折线图展示占用趋势（当前每 " + settings.sampleSec + " 秒采样）",
+                desc = "折线图展示占用趋势（当前每 " + fmtSec(settings.sampleSec) + " 秒采样）",
                 selected = settings.chartStyle == "plot",
             ) { store.updateSettings(settings.copy(chartStyle = "plot")) }
             Spacer(Modifier.height(12.dp))
             Text("坐标图采样间隔", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Text1)
             Spacer(Modifier.height(2.dp))
-            Text("折线图每隔多久采集一次数据（默认 5 秒，支持自定义 1-600 秒）", fontSize = 11.sp, color = Text3)
+            Text("折线图每隔多久采集一次数据（可低至 0.1 秒，上限 600 秒）", fontSize = 11.sp, color = Text3)
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(3, 5, 10, 30).forEach { sec ->
+                listOf(0.1f, 1f, 5f, 10f, 30f).forEach { sec ->
                     TagPill(
                         text = sec.toString() + "秒",
                         selected = settings.sampleSec == sec,
                         onClick = {
-                            sampleInput = sec.toString()
+                            sampleInput = fmtSec(sec)
                             store.updateSettings(settings.copy(sampleSec = sec))
                         },
                     )
@@ -106,7 +106,7 @@ fun SettingsScreen(onBack: () -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
                     value = sampleInput,
-                    onValueChange = { v -> sampleInput = v.filter { it.isDigit() }.take(3) },
+                    onValueChange = { v -> sampleInput = v.filter { it.isDigit() || it == '.' }.take(6) },
                     label = { Text("自定义秒数") },
                     modifier = Modifier.weight(1f),
                     singleLine = true,
@@ -117,8 +117,8 @@ fun SettingsScreen(onBack: () -> Unit) {
                         .clip(RoundedCornerShape(8.dp))
                         .background(Brand)
                         .clickable {
-                            val v = (sampleInput.toIntOrNull() ?: settings.sampleSec).coerceIn(1, 600)
-                            sampleInput = v.toString()
+                            val v = (sampleInput.toFloatOrNull() ?: settings.sampleSec).coerceIn(0.1f, 600f)
+                            sampleInput = fmtSec(v)
                             store.updateSettings(settings.copy(sampleSec = v))
                         }
                         .padding(horizontal = 14.dp, vertical = 10.dp),

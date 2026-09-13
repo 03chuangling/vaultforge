@@ -52,6 +52,9 @@ fun addressLine(item: VaultItem): String = when (item.type) {
     else -> item.address
 }
 
+/** 采样间隔等秒数显示：整数不带小数点，小数原样（如 0.1） */
+fun fmtSec(v: Float): String = if (v == v.toLong().toFloat()) v.toLong().toString() else v.toString()
+
 fun parseTags(text: String): List<String> =
     text.split(',', '，', ';', '；', ' ', '\n')
         .map { it.trim() }

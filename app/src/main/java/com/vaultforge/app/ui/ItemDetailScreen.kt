@@ -41,11 +41,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -157,7 +159,7 @@ fun ItemDetailScreen(
                     metrics = m2
                 }
                 metricsLoading = false
-                delay((settings.sampleSec.coerceIn(1, 600)) * 1000L)
+                delay(((settings.sampleSec.coerceIn(0.1f, 600f)) * 1000f).toLong())
             }
         }
     }
@@ -250,7 +252,8 @@ fun ItemDetailScreen(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
+                    .shadow(elevation = 3.dp, shape = RoundedCornerShape(16.dp), ambientColor = Color(0x262F5D62), spotColor = Color(0x262F5D62))
+                    .clip(RoundedCornerShape(16.dp))
                     .background(CardBg)
                     .padding(14.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -258,7 +261,7 @@ fun ItemDetailScreen(
                 StatusDot(item.status, size = 12.dp)
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(statusText(item), fontSize = 14.sp, color = statusColor(item.status), fontWeight = FontWeight.Medium)
+                    Text(statusText(item), fontSize = 14.sp, color = statusColor(item.status), fontWeight = FontWeight.Medium, style = TextStyle(fontFeatureSettings = "tnum"))
                     Text("最后检测：" + friendlyTime(item.lastCheckedAt), fontSize = 11.sp, color = Text3)
                     if (item.lastMessage.isNotBlank()) {
                         Text(item.lastMessage, fontSize = 11.sp, color = Text3, modifier = Modifier.padding(top = 2.dp))
@@ -602,7 +605,7 @@ private fun RateBars(m: SshMetrics) {
     }
 }
 @Composable
-private fun PlotCharts(m: SshMetrics, cpu: List<Float>, mem: List<Float>, disk: List<Float>, sampleSec: Int) {
+private fun PlotCharts(m: SshMetrics, cpu: List<Float>, mem: List<Float>, disk: List<Float>, sampleSec: Float) {
     Column(Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             LegendDot(Brand, "CPU", if (m.cpuPercent >= 0.0) String.format("%.0f%%", m.cpuPercent) else "—")
@@ -667,8 +670,8 @@ private fun PlotCharts(m: SshMetrics, cpu: List<Float>, mem: List<Float>, disk: 
         }
         Spacer(Modifier.height(4.dp))
         Text(
-            if (cpu.size < 2 && mem.size < 2) "正在采样…（每 " + sampleSec + " 秒一次，趋势将随采样逐步展开）"
-            else "横轴：最近 40 次采样（约每 " + sampleSec + " 秒一次）",
+            if (cpu.size < 2 && mem.size < 2) "正在采样…（每 " + fmtSec(sampleSec) + " 秒一次，趋势将随采样逐步展开）"
+            else "横轴：最近 40 次采样（约每 " + fmtSec(sampleSec) + " 秒一次）",
             fontSize = 10.sp,
             color = Text3,
         )
