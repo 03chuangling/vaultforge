@@ -1,0 +1,6 @@
+# 运行时数据
+/data/
+
+# 构建产物
+/vaultforge-server
+/dist/
