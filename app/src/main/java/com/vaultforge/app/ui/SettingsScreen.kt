@@ -157,7 +157,7 @@ fun SettingsScreen(onOpenBitwarden: () -> Unit) {
                 .padding(14.dp)
         ) {
             Text(
-                "从自建 Vaultwarden / 官方 Bitwarden 拉取密码条目：拉取后可在「Bitwarden」页浏览条目、查看动态验证码，也可一键导入到秘钥库。",
+                "从自建 Vaultwarden / 官方 Bitwarden 拉取密码条目：拉取后可在「Bitwarden」页浏览条目、查看动态验证码（不会导入秘钥仓）。",
                 fontSize = 11.sp,
                 color = Text3,
             )

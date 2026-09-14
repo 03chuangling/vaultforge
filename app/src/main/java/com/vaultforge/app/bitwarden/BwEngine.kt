@@ -1,7 +1,6 @@
 package com.vaultforge.app.bitwarden
 
 import com.vaultforge.app.data.VaultStore
-import com.vaultforge.app.model.VaultItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -119,32 +118,6 @@ object BwEngine {
         )
     }
 
-    /** 把拉取的条目导入本地秘钥库（幂等：id 为 "bw-" + Bitwarden 条目 id，再次导入自动更新）。返回导入数量。 */
-    fun importToStore(store: VaultStore, vault: BwVault): Int {
-        var n = 0
-        for (e in vault.entries) {
-            if (e.id.isBlank()) continue
-            val id = "bw-" + e.id
-            val tags = ArrayList<String>()
-            tags.add("bitwarden")
-            if (e.folderName.isNotBlank()) tags.add(e.folderName)
-            val existing = store.get(id)
-            store.upsert(
-                VaultItem(
-                    id = id,
-                    type = "login",
-                    name = e.name.ifBlank { "(未命名条目)" },
-                    username = e.username,
-                    secret = e.password,
-                    endpoint = e.uris.firstOrNull().orEmpty(),
-                    tags = tags,
-                    createdAt = existing?.createdAt ?: 0L,
-                )
-            )
-            n++
-        }
-        return n
-    }
 
     private fun safeDec(encKey: ByteArray, macKey: ByteArray, s: String?): String {
         if (s.isNullOrEmpty()) return ""

@@ -63,7 +63,6 @@ fun BitwardenScreen(onBack: () -> Unit) {
     var passInput by remember { mutableStateOf("") }
     var showPass by remember { mutableStateOf(false) }
     var shownIds by remember { mutableStateOf(setOf<String>()) }
-    var importMsg by remember { mutableStateOf("") }
 
     val busy = state.phase == BwPhase.RUNNING
 
@@ -82,7 +81,7 @@ fun BitwardenScreen(onBack: () -> Unit) {
         }
 
         Text(
-            "连接自建 Vaultwarden 或官方 Bitwarden，拉取并解密密码条目，可一键导入到秘钥库。主密码仅用于本次拉取，不会保存。",
+            "连接自建 Vaultwarden 或官方 Bitwarden，拉取并解密密码条目，存入「Bitwarden」页供浏览与查看动态验证码（不会导入秘钥仓）。主密码仅用于本次拉取，不会保存。",
             fontSize = 11.sp,
             color = Text3,
         )
@@ -143,7 +142,6 @@ fun BitwardenScreen(onBack: () -> Unit) {
                     .clip(RoundedCornerShape(10.dp))
                     .background(if (busy) LineColor else Brand)
                     .clickable(enabled = !busy) {
-                        importMsg = ""
                         scope.launch {
                             val ok = BwEngine.fetch(store, urlInput, emailInput, passInput)
                             if (ok) passInput = ""
@@ -193,22 +191,6 @@ fun BitwardenScreen(onBack: () -> Unit) {
                         color = Text3,
                     )
                 }
-                Box(
-                    Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Brand)
-                        .clickable {
-                            val n = BwEngine.importToStore(store, vault)
-                            importMsg = "已导入 " + n + " 条到秘钥库（首页可见，再次导入将自动更新）"
-                        }
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                ) {
-                    Text("全部导入", color = Color.White, fontSize = 12.sp)
-                }
-            }
-            if (importMsg.isNotBlank()) {
-                Spacer(Modifier.height(8.dp))
-                Text(importMsg, fontSize = 12.sp, color = StatusUp)
             }
 
             Spacer(Modifier.height(6.dp))
