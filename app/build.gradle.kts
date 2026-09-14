@@ -12,8 +12,8 @@ android {
         applicationId = "com.vaultforge.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 4
+        versionName = "0.4.0"
     }
 
     buildTypes {
@@ -61,13 +61,15 @@ dependencies {
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-core")
+    implementation("androidx.compose.material:material-icons-extended")
 
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
     // SSH 指标采集 + Docker 容器管理
     implementation("com.github.mwiede:jsch:0.2.17")
-
     // WebDAV 文件管理
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // Bitwarden Argon2id KDF
+    implementation("org.bouncycastle:bcprov-jdk18on:1.77")
 }

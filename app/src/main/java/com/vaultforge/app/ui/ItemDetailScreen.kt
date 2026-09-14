@@ -47,6 +47,8 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -86,6 +88,7 @@ fun ItemDetailScreen(
     }
 
     val scope = rememberCoroutineScope()
+    val clipboard = LocalClipboardManager.current
     var editMode by remember(itemId) { mutableStateOf(false) }
 
     // 编辑字段
@@ -222,6 +225,13 @@ fun ItemDetailScreen(
                     Spacer(Modifier.height(10.dp))
                     OutlinedTextField(value = secretText, onValueChange = { secretText = it }, label = { Text("密码 / 口令") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                 }
+                "login" -> {
+                    OutlinedTextField(value = username, onValueChange = { username = it }, label = { Text("用户名") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedTextField(value = secretText, onValueChange = { secretText = it }, label = { Text("密码") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedTextField(value = endpoint, onValueChange = { endpoint = it }, label = { Text("网址") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                }
                 else -> {
                     OutlinedTextField(value = endpoint, onValueChange = { endpoint = it }, label = { Text("API 调用地址") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                     Spacer(Modifier.height(10.dp))
@@ -267,22 +277,34 @@ fun ItemDetailScreen(
                         Text(item.lastMessage, fontSize = 11.sp, color = Text3, modifier = Modifier.padding(top = 2.dp))
                     }
                 }
-                Box(
-                    Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Brand)
-                        .clickable {
-                            if (!busy) {
-                                busy = true
-                                scope.launch {
-                                    runCatching { ProbeRunner.probe(store, item) }
-                                    busy = false
+                if (item.type == "login") {
+                    Box(
+                        Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Brand)
+                            .clickable { runCatching { clipboard.setText(AnnotatedString(item.secret)) } }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    ) {
+                        Text("复制密码", color = Color.White, fontSize = 12.sp)
+                    }
+                } else {
+                    Box(
+                        Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Brand)
+                            .clickable {
+                                if (!busy) {
+                                    busy = true
+                                    scope.launch {
+                                        runCatching { ProbeRunner.probe(store, item) }
+                                        busy = false
+                                    }
                                 }
                             }
-                        }
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                ) {
-                    Text(if (busy) "检测中…" else "立即检测", color = Color.White, fontSize = 12.sp)
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    ) {
+                        Text(if (busy) "检测中…" else "立即检测", color = Color.White, fontSize = 12.sp)
+                    }
                 }
             }
 
@@ -417,6 +439,15 @@ fun ItemDetailScreen(
                 SectionTitle("说明")
                 Text(
                     "检测时会优先执行「官方演示代码」：自动提取代码中的真实请求（支持 curl / Python / JS 片段）并实际调用，用真实响应（200 可用 / 401 密钥问题等）判断；未填或无法解析时回退为地址连通性探测。地址与演示代码在右上角设置中查看修改。",
+                    color = Text3,
+                    fontSize = 12.sp,
+                )
+            }
+            if (item.type == "login") {
+                Spacer(Modifier.height(16.dp))
+                SectionTitle("说明")
+                Text(
+                    "该条目由 Bitwarden 密码库导入。点右上角设置可修改名称 / 用户名 / 密码 / 网址；再次导入同一账号时将按条目自动更新。",
                     color = Text3,
                     fontSize = 12.sp,
                 )

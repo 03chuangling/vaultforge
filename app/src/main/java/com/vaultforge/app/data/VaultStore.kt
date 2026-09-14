@@ -31,6 +31,10 @@ data class VaultSettings(
     val cloudToken: String = "",
     val cloudDeviceId: String = "",
     val lastSyncAt: Long = 0L,
+
+    // ---- Bitwarden 对接（v0.3.0）----
+    val bwUrl: String = "",
+    val bwEmail: String = "",
 )
 
 @Serializable

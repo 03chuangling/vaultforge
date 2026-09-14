@@ -7,6 +7,7 @@ import com.vaultforge.app.model.VaultItem
 object ProbeRunner {
 
     suspend fun probe(store: VaultStore, item: VaultItem): ProbeResult {
+        if (item.type == "login") return ProbeResult(true, -1L, "Bitwarden 条目（无需检测）")
         val result = when (item.type) {
             "file" -> FileProbe.probe(item)
             "ssh" -> SshClient.probe(item)
@@ -26,6 +27,7 @@ object ProbeRunner {
 
     suspend fun probeAll(store: VaultStore) {
         store.items.value.forEach { item ->
+            if (item.type == "login") return@forEach
             runCatching { probe(store, item) }
         }
     }

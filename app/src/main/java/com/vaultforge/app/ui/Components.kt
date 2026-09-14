@@ -36,6 +36,7 @@ fun statusColor(status: ItemStatus): Color = when (status) {
 }
 
 fun statusText(item: VaultItem): String {
+    if (item.type == "login" && item.lastCheckedAt <= 0L) return "已保存"
     if (item.lastCheckedAt <= 0L) return "未检测"
     return if (item.lastOk == true) {
         val base = if (item.type == "ssh") "在线" else "可用"
@@ -49,6 +50,7 @@ fun addressLine(item: VaultItem): String = when (item.type) {
     "file" -> listOf(item.protocol, item.address).filter { it.isNotBlank() }.joinToString(" · ")
     "ssh" -> item.host + ":" + item.port + (if (item.username.isNotBlank()) " · " + item.username else "")
     "api" -> item.endpoint
+    "login" -> listOf(item.endpoint, item.username).firstOrNull { it.isNotBlank() }.orEmpty()
     else -> item.address
 }
 

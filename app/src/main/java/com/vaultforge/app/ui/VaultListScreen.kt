@@ -259,7 +259,7 @@ private fun ListHeader(
 
 @Composable
 private fun TypeFilterRow(selected: String, onSelect: (String) -> Unit) {
-    val options = listOf("" to "全部", "file" to "文件", "ssh" to "SSH", "api" to "API")
+    val options = listOf("" to "全部", "file" to "文件", "ssh" to "SSH", "api" to "API", "login" to "登录")
     LazyRow(
         contentPadding = PaddingValues(horizontal = 18.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -357,6 +357,7 @@ private fun TypeBadge(type: String) {
         "file" -> "文件"
         "ssh" -> "SSH"
         "api" -> "API"
+        "login" -> "登录"
         else -> type
     }
     Text(

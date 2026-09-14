@@ -39,16 +39,21 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.vaultforge.app.bitwarden.BwCache
 import com.vaultforge.app.VaultApp
 import com.vaultforge.app.sync.SyncEngine
 import com.vaultforge.app.sync.SyncPhase
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
-fun SettingsScreen(onBack: () -> Unit) {
+fun SettingsScreen(onOpenBitwarden: () -> Unit) {
     val store = VaultApp.store
     val settings by store.settings.collectAsState()
     val clipboard = LocalClipboardManager.current
@@ -60,12 +65,13 @@ fun SettingsScreen(onBack: () -> Unit) {
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 18.dp, vertical = 10.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = Text1)
-            }
-            Text("设置", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Text1)
-        }
+        Text(
+            "设置",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            color = Text1,
+            modifier = Modifier.padding(start = 8.dp, top = 2.dp, bottom = 2.dp),
+        )
 
         Spacer(Modifier.height(10.dp))
         SectionTitle("显示")
@@ -141,6 +147,73 @@ fun SettingsScreen(onBack: () -> Unit) {
         CloudSyncSection()
 
         Spacer(Modifier.height(18.dp))
+        SectionTitle("Bitwarden 密码库")
+        Spacer(Modifier.height(6.dp))
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(CardBg)
+                .padding(14.dp)
+        ) {
+            Text(
+                "从自建 Vaultwarden / 官方 Bitwarden 拉取密码条目：拉取后可在「Bitwarden」页浏览条目、查看动态验证码，也可一键导入到秘钥库。",
+                fontSize = 11.sp,
+                color = Text3,
+            )
+            if (settings.bwUrl.isNotBlank() || settings.bwEmail.isNotBlank()) {
+                Spacer(Modifier.height(10.dp))
+                if (settings.bwUrl.isNotBlank()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("服务器", fontSize = 11.sp, color = Text3, modifier = Modifier.width(52.dp))
+                        Text(
+                            settings.bwUrl,
+                            fontSize = 11.sp,
+                            color = Text2,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+                if (settings.bwEmail.isNotBlank()) {
+                    Spacer(Modifier.height(3.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("邮箱", fontSize = 11.sp, color = Text3, modifier = Modifier.width(52.dp))
+                        Text(
+                            settings.bwEmail,
+                            fontSize = 11.sp,
+                            color = Text2,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+            }
+            val bwCache = BwCache.state.collectAsState().value
+            Spacer(Modifier.height(10.dp))
+            Text(
+                bwCache?.let { d ->
+                    "最近拉取：" + SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(d.pulledAt)) +
+                        " · " + d.vault.entries.size + " 条"
+                } ?: "尚未拉取过密码库",
+                fontSize = 11.sp,
+                color = if (bwCache == null) Text3 else StatusUp,
+            )
+            Spacer(Modifier.height(10.dp))
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Brand)
+                    .clickable { onOpenBitwarden() }
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+            ) {
+                Text("拉取密码库", color = Color.White, fontSize = 13.sp)
+            }
+        }
+
+        Spacer(Modifier.height(18.dp))
         SectionTitle("本地 API")
         Spacer(Modifier.height(6.dp))
         Column(
@@ -172,7 +245,7 @@ fun SettingsScreen(onBack: () -> Unit) {
         Spacer(Modifier.height(18.dp))
         SectionTitle("关于")
         Spacer(Modifier.height(6.dp))
-        Text("秘钥仓 VaultForge v0.2.0", fontSize = 13.sp, color = Text2)
+        Text("秘钥仓 VaultForge v0.3.0", fontSize = 13.sp, color = Text2)
         Text("本地密钥管理 · SSH / Docker 运维小工具", fontSize = 11.sp, color = Text3)
 
         Spacer(Modifier.height(40.dp))
